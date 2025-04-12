@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import Optional, List
 from .utils import Platform
+import shlex
+from os.path import expanduser
 
 @dataclass
 class FormState:
@@ -37,8 +39,8 @@ class FormState:
     
     # Web specific options
     base_url: str = ""
-    web_renderer: str = "canvaskit"
-    route_url_strategy: str = "path"
+    web_renderer: str = ""
+    route_url_strategy: str = ""
     pwa_background_color: str = ""
     pwa_theme_color: str = ""
     enable_color_emojis: bool = False
@@ -59,7 +61,7 @@ class FormState:
     android_signing_key_store: str = ""
     android_signing_key_store_password: str = ""
     android_signing_key_password: str = ""
-    android_signing_key_alias: str = "upload"
+    android_signing_key_alias: str = ""
     android_deep_linking_scheme: str = ""
     android_deep_linking_host: str = ""
     split_apk_per_abis: bool = False
@@ -77,90 +79,117 @@ class FormState:
     # Selected platform
     selected_platform: Optional[Platform] = None
 
+    verbose_build = False   
+
     def update(self, field_name, value):
         """Update a field and trigger the callback"""
         if hasattr(self, field_name):
             setattr(self, field_name, value)
             if self.on_change:
                 self.on_change()
-                
-    @property
-    def cli_map(form) -> dict:
+
+    def get_build_command(self):
+        """Generate the flet build command based on current state"""
+        # Start with base command
+        cmd = ["flet", "build"]
+        
+        # Get CLI arguments from the cli_map property
+        cli_args = self.cli_map()
+        # Convert the dictionary to command-line arguments
+        for key, value in cli_args.items():
+            # positional arguments
+            if key == "platform":
+                cmd.append(value)
+            elif key == "python_app_path":
+                cmd.append(expanduser(value))
+
+            # Handle boolean flags
+            elif isinstance(value, bool) and value:
+                cmd.append(f"{key}")
+            # Handle lists
+            elif isinstance(value, list) and value:
+                for item in value:
+                    cmd.append(f"{key}={shlex.quote(item)}")
+            # Handle regular key-value pairs
+            elif value:
+                cmd.append(f"{key}={shlex.quote(value)}")
+        
+        # Add module name if specified
+        if self.module_name:
+            cmd.append(f"--module={self.module_name}")
+        if self.verbose_build:
+            cmd.append("-v")
+        
+        return cmd
+    
+    def cli_map(self) -> dict:
         """Convert FormState to a dictionary of CLI arguments."""
         cli_map = {
             # Basic options
-            "python_app_path": form.python_app_path,
-            "--output": form.output_directory,
-            "--clear-cache": form.clear_build_cache,
+            "platform": self.selected_platform.cmd_value.lower(),
+            "python_app_path": self.python_app_path,
+            "--output": self.output_directory,
+            "--clear-cache": self.clear_build_cache,
+
+            "--build-version": self.build_version,
+            "--build-number": self.build_number,
             
             # App information
-            "--project": form.project_name,
-            "--product": form.product_name,
-            "--description": form.description,
-            "--org": form.organization,
+            "--project": self.project_name,
+            "--product": self.product_name,
+            "--description": self.description,
+            "--org": self.organization,
             
             # Appearance
-            "--splash-color": form.splash_screen_color,
-            "--splash-dark-color": form.splash_screen_dark_color,
-            "--no-web-splash": form.disable_web_splash_screen,
-            "--no-ios-splash": form.disable_ios_splash_screen,
-            "--no-android-splash": form.disable_android_splash_screen,
+            "--splash-color": self.splash_screen_color,
+            "--splash-dark-color": self.splash_screen_dark_color,
+            "--no-web-splash": self.disable_web_splash_screen,
+            "--no-ios-splash": self.disable_ios_splash_screen,
+            "--no-android-splash": self.disable_android_splash_screen,
             
             # Package options
-            "--exclude": form.exclude_additional_files,
-            "--compile-app": form.compile_app_py_files,
-            "--compile-packages": form.compile_site_packages_py_files,
-            "--cleanup-app": form.remove_unnecessary_app_files,
-            "--cleanup-packages": form.remove_unnecessary_package_files,
+            "--exclude": self.exclude_additional_files,
+            "--compile-app": self.compile_app_py_files,
+            "--compile-packages": self.compile_site_packages_py_files,
+            "--cleanup-app": self.remove_unnecessary_app_files,
+            "--cleanup-packages": self.remove_unnecessary_package_files,
             
             # Web specific options
-            "--base-url": form.base_url,
-            "--web-renderer": form.web_renderer,
-            "--use-color-emoji": form.enable_color_emojis,
-            "--route-url-strategy": form.route_url_strategy,
-            "--pwa-background-color": form.pwa_background_color,
-            "--pwa-theme-color": form.pwa_theme_color,
+            "--base-url": self.base_url,
+            "--web-renderer": self.web_renderer,
+            "--use-color-emoji": self.enable_color_emojis,
+            "--route-url-strategy": self.route_url_strategy,
+            "--pwa-background-color": self.pwa_background_color,
+            "--pwa-theme-color": self.pwa_theme_color,
             
             # iOS specific options
-            "--ios-team-id": form.team_id,
-            "--ios-export-method": form.export_method,
-            "--ios-signing-certificate": form.signing_certificate,
-            "--ios-provisioning-profile": form.provisioning_profile,
-            "--info-plist": form.ios_info_plist,
+            "--ios-team-id": self.team_id,
+            "--ios-export-method": self.export_method,
+            "--ios-signing-certificate": self.signing_certificate,
+            "--ios-provisioning-profile": self.provisioning_profile,
+            "--info-plist": self.ios_info_plist,
             
             # Android specific options
-            "--android-meta-data": form.android_metadata,
-            "--android-features": form.android_features,
-            "--android-permissions": form.android_permissions,
-            "--split-per-abi": form.split_apk_per_abis,
+            "--android-meta-data": self.android_metadata,
+            "--android-features": self.android_features,
+            "--android-permissions": self.android_permissions,
+            "--split-per-abi": self.split_apk_per_abis,
             
             # macOS specific options
-            "--macos-entitlements": form.macos_entitlements,
+            "--macos-entitlements": self.macos_entitlements,
             
             # Flutter build arguments
-            "--flutter-build-args": form.flutter_args,
+            "--flutter-build-args": self.flutter_args,
             
             # Permissions
             "--permissions": [p for p, enabled in {
-                "location": form.permission_location,
-                "camera": form.permission_camera,
-                "microphone": form.permission_microphone,
-                "photo_library": form.permission_photo_library
+                "location": self.permission_location,
+                "camera": self.permission_camera,
+                "microphone": self.permission_microphone,
+                "photo_library": self.permission_photo_library
             }.items() if enabled]
         }
         
-        # Add platform if selected
-        if form.selected_platform:
-            cli_map["platform"] = form.selected_platform.value
-        
         # Filter out empty or False values
         return {k: v for k, v in cli_map.items() if v or isinstance(v, (int, float))}
-
-
-def connect_field(field_ref, state_property):
-    """Connect a field to FormState property"""
-    def on_field_change(e):
-        form_state.update(state_property, field_ref.current.value)
-    
-    return on_field_change
     

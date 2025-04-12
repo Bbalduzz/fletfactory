@@ -1,9 +1,12 @@
 import flet as ft
+import flet_cli.utils.processes as processes
 from components.widgets import *
 import subprocess
 import re
 import json
 import asyncio
+import shlex
+from os import environ
 
 # Flutter doctor components that are typically checked
 EXPECTED_COMPONENTS = [
@@ -48,11 +51,10 @@ async def run_flutter_doctor():
             result = {component_name: status}
             yield json.dumps(result)
     
-    await process.wait() # process to complete
+    await process.wait() # wait for process to complete
     
     if process.returncode != 0:
         yield json.dumps({"Error": f"Flutter doctor exited with code {process.returncode}"})
-
 
 class FactorySidebar(ft.Container):
     def __init__(self, version="v0.0.1", command_ref=None):
@@ -66,7 +68,9 @@ class FactorySidebar(ft.Container):
         self.padding = 10
         
         self._flet_command_ref = command_ref
+        self._flet_build_output_ref = ft.Ref[ft.TextField]()
         self._flutter_results_ref = ft.Ref[ft.Column]()
+        self._build_button_ref = ft.Ref[FactoryButton]()
         self._flutter_progress_ref = ft.Ref[ft.ProgressRing]()
         
         self.result_rows = {}
@@ -74,42 +78,34 @@ class FactorySidebar(ft.Container):
         self._build_sidebar()
         
     def _build_sidebar(self):
-        header = ft.Row(
-            [
-                ft.Container(
-                    ft.Text(
-                        self.version,
-                        style=ft.TextStyle(
-                            size=12,
-                            color=ft.Colors.BLACK12
-                        )
+        header = ft.WindowDragArea(
+            ft.Row(
+                [
+                    ft.Container(
+                        ft.Text(
+                            self.version,
+                            style=ft.TextStyle(
+                                size=12,
+                                color=ft.Colors.BLACK12
+                            )
+                        ),
                     ),
-                    # margin=ft.margin.only(left=50),
-                ),
-                ft.Row([
-                    ft.Image(
-                        src="https://raw.githubusercontent.com/flet-dev/flet/e3f4d16d6f9412175c29e8b982146230ecc1a7d5/media/logo/flet-logo-no-text.svg",
-                        color=ft.Colors.BLACK12,
-                        width=16,
-                        height=16,
-                    ),
-                    ft.Image(
-                        src="https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg",
-                        color=ft.Colors.BLACK12,
-                        width=16,
-                        height=16,
-                    ),
-                ])
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-        )
-        
-        # Version text at the bottom
-        footer = ft.Text(
-            self.version,
-            style=ft.TextStyle(
-                size=12,
-                color=ft.Colors.BLACK26
+                    ft.Row([
+                        ft.Image(
+                            src="https://raw.githubusercontent.com/flet-dev/flet/e3f4d16d6f9412175c29e8b982146230ecc1a7d5/media/logo/flet-logo-no-text.svg",
+                            color=ft.Colors.BLACK12,
+                            width=16,
+                            height=16,
+                        ),
+                        ft.Image(
+                            src="https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg",
+                            color=ft.Colors.BLACK12,
+                            width=16,
+                            height=16,
+                        ),
+                    ])
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             )
         )
         
@@ -118,9 +114,11 @@ class FactorySidebar(ft.Container):
         flutter_progress = ft.ProgressRing(ref=self._flutter_progress_ref, visible=False, width=16, height=16)
         
         flutter_doctor_section = ft.ExpansionTile(
-            title = ft.Text("Flutter Doctor", font_family="OpenRunde Medium", size=14, color=ft.Colors.BLACK87),
+            title = ft.Text("Flutter Doctor", font_family="OpenRunde Medium", size=12, color=ft.Colors.BLACK38),
             show_trailing_icon=False,
+            dense=True,
             shape = ft.ContinuousRectangleBorder(radius=6),
+            tile_padding=ft.padding.all(5),
             controls = [
                 ft.Container(
                     content=ft.Column([
@@ -142,8 +140,8 @@ class FactorySidebar(ft.Container):
         content_area = ft.Column(
             controls=[
                 flutter_doctor_section,
-                FactoryTextField("terminal pipeline", multiline=True),
-                FactoryTextField("current command", ref=self._flet_command_ref, multiline=True, read_only=True),
+                FactoryTextField("terminal pipeline", ref=self._flet_build_output_ref, text_style=ft.TextStyle(font_family="FiraCode Light", size=6), content_padding=ft.padding.all(10), multiline=True, max_lines=20),
+                FactoryTextField("current command", ref=self._flet_command_ref, text_style=ft.TextStyle(font_family="FiraCode Retina", size=10), content_padding=ft.padding.all(10), multiline=True, read_only=True),
                 FactoryButton(
                     ft.Row(
                         [
@@ -157,7 +155,9 @@ class FactorySidebar(ft.Container):
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
                     ), 
-                    height=50
+                    height=50,
+                    ref=self._build_button_ref,
+                    on_click=self.execute_build_command
                 ),
             ],
             spacing=5,
@@ -171,7 +171,7 @@ class FactorySidebar(ft.Container):
             controls=[
                 header,
                 content_area,
-                footer
+                ft.Container(height=20)
             ],
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             spacing=10,
@@ -187,8 +187,8 @@ class FactorySidebar(ft.Container):
         for component in EXPECTED_COMPONENTS:
             # Create a row with a loading indicator for each expected component
             self.result_rows[component] = ft.Row([
-                ft.ProgressRing(width=10, height=10, stroke_width=1, color=colors_map["primary"]),
-                ft.Text(f"{component}", size=12, opacity=0.7)
+                ft.ProgressRing(width=8, height=8, stroke_width=1, color=colors_map["primary"]),
+                ft.Text(f"{component}", size=10, opacity=0.7)
             ], spacing=5)
             results_container.controls.append(self.result_rows[component])
     
@@ -206,7 +206,7 @@ class FactorySidebar(ft.Container):
                 ft.Icons.WARNING if status == "WARNING" else \
                 ft.Icons.INFO,
             color=color,
-            size=12
+            size=8
         )
         
         # Clean up component name - remove descriptions after dash or in parentheses
@@ -224,13 +224,13 @@ class FactorySidebar(ft.Container):
             # Update existing row
             self.result_rows[matching_component].controls = [
                 icon,
-                ft.Text(f"{display_name}", size=12, color=color)
+                ft.Text(f"{display_name}", size=10, color=color)
             ]
         else:
             # Create new row for unexpected components
             new_row = ft.Row([
                 icon,
-                ft.Text(f"{display_name}", size=12, color=color)
+                ft.Text(f"{display_name}", size=10, color=color)
             ], spacing=5)
             self._flutter_results_ref.current.controls.append(new_row)
             self.result_rows[component] = new_row
@@ -279,3 +279,105 @@ class FactorySidebar(ft.Container):
         if self.page:
             self.height = self.page.window.height
             self.update()
+        
+    async def execute_build_command(self, e):
+
+        """Execute the flet build command and stream output to the terminal"""
+        # Get references to UI elements
+        build_button = self._build_button_ref.current
+        output_field = self._flet_build_output_ref.current
+        command_field = self._flet_command_ref.current
+        
+        # Get the command to execute
+        command = command_field.value
+        if not command:
+            output_field.value = "No command to execute. Please select a platform and configure build options."
+            output_field.update()
+            self.show_toast("No command to execute", "error")
+            return
+        
+        # Clear previous output
+        output_field.value = f"Executing: {command}\n\n"
+        output_field.update()
+        
+        # Disable the build button
+        build_button.disabled = True
+        build_button.update()
+
+        build_toast_id = "build_progress_toast"
+        if self.page:
+            self.page.pubsub.send_all({
+                "type": "toast",
+                "message": "Building application...",
+                "toast_type": "promise",
+                "duration": 0,
+                "toast_id": build_toast_id
+            })  # Duration 0 means it won't auto-dismiss
+        
+        try:
+            if isinstance(command, list):
+                args = command
+            else:
+                args = shlex.split(command)
+            
+            # Create and start the process
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env={
+                    **environ, 
+                    "LINES": "40",
+                    "COLUMNS": "40",
+                    # "CHROME_EXECUTABLE": "/Applications/Thorium.app/Contents/MacOS/Thorium"
+                }
+            )
+            
+            # Stream output to the text field
+            while True:
+                line_bytes = await process.stdout.readline()
+                if not line_bytes:
+                    break
+                    
+                line = line_bytes.decode('utf-8')
+                output_field.value += line
+                output_field.update()
+            
+            # Wait for process to complete
+            await process.wait()
+
+            if self.page:
+                self.page.pubsub.send_all({
+                    "type": "remove_toast",
+                    "toast_id": build_toast_id
+                })
+            
+            # Add final status
+            if process.returncode == 0:
+                output_field.value += "\n✅ Build completed successfully!"
+                self.show_toast("Build completed successfully!", "success")
+            else:
+                output_field.value += f"\n❌ Build failed with exit code {process.returncode}"
+                self.show_toast(f"Build failed with exit code {process.returncode}", "error")
+            
+            output_field.update()
+            
+        except Exception as e:
+            output_field.value += f"\n❌ Error executing command: {str(e)}"
+            output_field.update()
+            self.show_toast(f"Error: {str(e)}", "error")
+        
+        finally:
+            # Re-enable the build button
+            build_button.disabled = False
+            build_button.update()
+
+    def show_toast(self, message, toast_type="default", duration=3):
+        """Send a toast notification via pubsub"""
+        if self.page:
+            self.page.pubsub.send_all({
+                "type": "toast",
+                "message": message,
+                "toast_type": toast_type,
+                "duration": duration
+            })

@@ -23,16 +23,32 @@ class FactoryButton(ft.TextButton):
 class FactoryTextField(ft.TextField):
     def __init__(self, hint_text="", value="", height=40, **kwargs):
         height_param = {} if kwargs.get("multiline", False) else {"height": height}
+        default_text_style = ft.TextStyle(
+            size=14,
+            color=colors_map["text_secondary"],
+        )
+        
+        # If text_style is provided in kwargs, merge it with default
+        if "text_style" in kwargs:
+            custom_text_style = kwargs.pop("text_style")
+            # Create a dictionary from default text style
+            merged_style_dict = {k: v for k, v in default_text_style.__dict__.items() if v is not None}
+            # Update with custom style attributes
+            merged_style_dict.update({k: v for k, v in custom_text_style.__dict__.items() if v is not None})
+            # Create new TextStyle with merged attributes
+            text_style = ft.TextStyle(**merged_style_dict)
+        else:
+            text_style = default_text_style
+
+        content_padding = kwargs.pop("content_padding", ft.padding.symmetric(horizontal=10, vertical=5))
 
         super().__init__(
             cursor_color=colors_map["text_secondary"],
             border_color=colors_map["border_normal"],
             border_width=1,
+            content_padding=content_padding,
             focused_border_color=colors_map["primary"],
-            text_style=ft.TextStyle(
-                size=14,
-                color=colors_map["text_secondary"],
-            ),
+            text_style=text_style,
             hint_text=hint_text,
             value=value,
             border_radius=6,
@@ -45,7 +61,8 @@ class FactoryTextField(ft.TextField):
         return self.content.value
 
 class FactoryCheckBox(ft.Checkbox):
-    def __init__(self, label="", value=False, **kwargs):
+    def __init__(self, label="", value=False, on_change=None, **kwargs):
+        self._user_on_change = on_change
         super().__init__(
             label=label,
             value=value,
@@ -77,8 +94,15 @@ class FactoryCheckBox(ft.Checkbox):
                     width=1,
                 ),
             },
+            on_change=self._handle_change,
             **kwargs
         )
+
+    # TODO: add on_change listener
+    def _handle_change(self, e):
+        """Internal handler that ensures the form state is updated"""
+        if self._user_on_change:
+            self._user_on_change(e)
 
     @property
     def result(self):
@@ -121,6 +145,7 @@ class FactoryField(ft.Container):
     def __init__(self, title, hint_text, widget, **kwargs):
         super().__init__(**kwargs)
         self.bgcolor = "#ffffff"
+        self.content_padding = ft.padding.symmetric(horizontal=10, vertical=5)
         self._title = title
         self._hint_text = hint_text
         self._widget = widget
@@ -177,6 +202,7 @@ class FactoryBadgeInput(ft.Container):
         self.border = ft.border.all(1, colors_map["border_normal"])
         self.border_radius = 6
         self.padding = 5
+        self.on_change = on_change
         # Create a new list to avoid shared list issues
         self._badges = badges.copy() if badges else []
         self._text_field = FactoryTextField(
@@ -196,9 +222,41 @@ class FactoryBadgeInput(ft.Container):
             ]
         )
 
+    def _trigger_on_change(self):
+        """Trigger the on_change event with the current badge values"""
+        if self.on_change:
+            # Create a synthetic event with the current badge values
+            e = type('obj', (object,), {
+                'control': self,
+                'data': self.value
+            })
+            self.on_change(e)
+
+    @property
+    def value(self):
+        """Return the list of badge texts"""
+        return [badge.text for badge in self._badges]
+
+    @value.setter
+    def value(self, new_values):
+        """Set badges from a list of values"""
+        # Clear existing badges
+        self._badges.clear()
+        
+        # Add new badges
+        if isinstance(new_values, list):
+            for val in new_values:
+                badge = FactoryBadge(text=str(val), on_click=self.remove_badge)
+                self._badges.append(badge)
+        
+        # Update the row's controls
+        self._badges_row.controls = self._badges
+        self._badges_row.update()
+        self.update()
+
     @property
     def result(self):
-        return [badge.text for badge in self._badges]
+        return self.value
 
     def remove_badge(self, e):
         # Find the badge in the list and remove it
@@ -210,6 +268,8 @@ class FactoryBadgeInput(ft.Container):
                 print("removed badge", badge.text)
                 self._badges_row.update()
                 self.update()
+                # Trigger on_change event
+                self._trigger_on_change()
                 break
 
     def on_submit(self, e):
@@ -225,6 +285,8 @@ class FactoryBadgeInput(ft.Container):
             self._text_field.update()
             self._badges_row.update()
             self.update()
+            # Trigger on_change event
+            self._trigger_on_change()
 
 class FactoryCard(ft.Container):
     def __init__(self, title: ft.Text = "Title", content: List[FactoryField] = []):
@@ -352,14 +414,15 @@ class PlatformButton(ft.ElevatedButton):
         self.state = 0
 
 class PlatformsRow(ft.Row):
-    def __init__(self, platforms: list[Platform]):
+    def __init__(self, platforms: list[Platform], on_change=None):
         super().__init__(
             alignment=ft.MainAxisAlignment.START,
             spacing=10,
-            height=50, 
+            height=60, 
             width=730,
-            scroll=ft.ScrollMode.HIDDEN,
+            scroll=ft.ScrollMode.AUTO,
         )
+        self._on_change_callback = on_change
         self.buttons = []
         self.selected_button = None
         
@@ -380,20 +443,46 @@ class PlatformsRow(ft.Row):
                     prefer_below=False,
                     
                 )
+        
+        # same as before
+        self.controls.append(ft.Container(width=0))
     
     def _handle_button_select(self, button):
-        # If the clicked button is already selected, do nothing
         if button == self.selected_button:
             return
             
-        # Deselect the previously selected button
+        # deselect the previously selected button
         if self.selected_button:
             self.selected_button.deselect()
             
-        # Select the clicked button
+        # select the clicked button
         self.selected_button = button
         self.selected_button.select() 
-        
+
+        if self._on_change_callback:
+            self._on_change_callback(self.get_selected_platform())
+
     def get_selected_platform(self):
         """Returns the currently selected platform or None if none selected"""
         return self.selected_button.platform if self.selected_button else None
+
+## title section
+class FactoryHeader(ft.Row):
+    def __init__(self):
+        super().__init__(
+            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            spacing=10
+        )
+        self.controls = [
+            ft.Row(
+                alignment=ft.CrossAxisAlignment.BASELINE,
+                spacing=10,
+                controls=[
+                    ft.Text("Flet Factory", style=ft.TextStyle(
+                        font_family="OpenRunde Bold",
+                        size=30,
+                        color=colors_map["text_secondary"],
+                    )),
+                ]
+            ),
+        ]

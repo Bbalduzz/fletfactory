@@ -1,8 +1,8 @@
 import flet as ft
-# from flet_cli.utils.pyproject_toml import load_pyproject_toml
+from flet_cli.utils.pyproject_toml import load_pyproject_toml
 from enum import Enum
 from pathlib import Path
-from os.path import expanduser
+from os import path, environ
 from typing import List
 import toml
 
@@ -18,56 +18,14 @@ from components.widgets import (
     FactoryBadge,
     FactoryBadgeInput,
     colors_map,
-    PlatformButton, PlatformsRow
+    PlatformButton, PlatformsRow,
+    FactoryHeader
 )
-from components.form import FormState, connect_field
+from components.toast import Toaster, ToastType, ToastPosition
+from components.form import FormState
 from views.sidebar import FactorySidebar
 
-def load_pyproject_toml(project_dir: Path):
-    project_str = Path(expanduser(str(project_dir)))
-    pyproject_toml = {}
-    pyproject_toml_file = project_str.joinpath("pyproject.toml")
-
-    if pyproject_toml_file.exists():
-        print("Loading pyproject.toml...")
-        with open(pyproject_toml_file, "r") as f:
-            pyproject_toml = toml.loads(f.read())  # Use toml.load instead of loads
-    
-    def get_pyproject(setting: str = None):
-        if not setting:
-            return pyproject_toml
-        
-        d = pyproject_toml
-        for k in setting.split("."):
-            if not isinstance(d, dict):
-                return None
-            d = d.get(k)
-            if d is None:
-                return None
-        return d
-    
-    return get_pyproject
-
-## title section
-class FactoryHeader(ft.Row):
-    def __init__(self):
-        super().__init__(
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            spacing=10
-        )
-        self.controls = [
-            ft.Row(
-                alignment=ft.CrossAxisAlignment.BASELINE,
-                spacing=10,
-                controls=[
-                    ft.Text("Flet Factory", style=ft.TextStyle(
-                        font_family="OpenRunde Bold",
-                        size=30,
-                        color=colors_map["text_secondary"],
-                    )),
-                ]
-            ),
-        ]
+environ["FLET_CLI_NO_RICH_OUTPUT"] = "1"
 
 def main(page: ft.Page):
     page.title = "Flet Factory"
@@ -76,16 +34,22 @@ def main(page: ft.Page):
     page.window.height = 800
     page.window.resizable = False
     page.window.title_bar_hidden = True
+    page.window.title_bar_buttons_hidden = True
+    page.window.center()
     page.bgcolor = "#f9fafb"
     page.fonts = {
         "OpenRunde Regular": "/fonts/open_runde/OpenRunde-Regular.otf",
         "OpenRunde Medium": "/fonts/open_runde/OpenRunde-Medium.otf",
         "OpenRunde Bold": "/fonts/open_runde/OpenRunde-Bold.otf",
         "OpenRunde Semibold": "/fonts/open_runde/OpenRunde-Semibold.otf",
+        "FiraCode Retina": "/fonts/fira_code/FiraCode-Retina.ttf",
+        "FiraCode Light": "/fonts/fira_code/FiraCode-Light.ttf",
     }
     page.theme = ft.Theme(
         font_family="OpenRunde Regular"
     )
+
+    toaster = Toaster(page, position=ToastPosition.TOP_RIGHT, theme="light")
     
     # MARK: state #
     form_state = FormState()
@@ -162,7 +126,6 @@ def main(page: ft.Page):
 
     command_display_ref = ft.Ref[ft.Text]()
 
-    # Add this function after defining all the refs and before creating the UI components
     def populate_form_from_pyproject(e):
         """Populate form fields with data from pyproject.toml."""
         print("Populating form from pyproject.toml...")
@@ -172,207 +135,172 @@ def main(page: ft.Page):
             return
 
         try:
-            get_pyproject = load_pyproject_toml(Path(project_dir))
+            get_pyproject = load_pyproject_toml(Path(path.expanduser(str(project_dir))))
             # Check if pyproject.toml exists
             if not get_pyproject():
                 print("No pyproject.toml found or file is empty")
                 return
 
-            # Remove assertion to make the function more robust
-            # assert get_pyproject("tool.flet.app.path")
+            # Helper function to update both UI and form state
+            def update_field(ref, state_property, value):
+                if ref.current:
+                    ref.current.value = value
+                    form_state.update(state_property, value)
             
             # Building configuration
-            if app_path := get_pyproject("tool.flet.app.path"):
-                # This is the app path
-                python_app_path_ref.current.value = app_path
-                form_state.python_app_path = app_path
+
+            # if app_path := get_pyproject("tool.flet.app.path"): # is doesnt concern us
+            #     update_field(python_app_path_ref, "python_app_path", app_path)
                 
             if app_module := get_pyproject("tool.flet.app.module"):
-                module_name_ref.current.value = app_module
-                form_state.module_name = app_module
+                update_field(module_name_ref, "module_name", app_module)
             
             # App information - check both project and poetry sections
             if project_name := get_pyproject("project.name") or get_pyproject("tool.poetry.name"):
-                project_name_ref.current.value = project_name
-                form_state.project_name = project_name
+                update_field(project_name_ref, "project_name", project_name)
             
             if product_name := get_pyproject("tool.flet.product"):
-                product_name_ref.current.value = product_name
-                form_state.product_name = product_name
+                update_field(product_name_ref, "product_name", product_name)
             
             if description := get_pyproject("project.description") or get_pyproject("tool.poetry.description"):
-                description_ref.current.value = description
-                form_state.description = description
+                update_field(description_ref, "description", description)
             
             if organization := get_pyproject("tool.flet.org"):
-                organization_ref.current.value = organization
-                form_state.organization = organization
+                update_field(organization_ref, "organization", organization)
             
             # Versioning
             if build_number := get_pyproject("tool.flet.build_number"):
-                build_number_ref.current.value = str(build_number)
-                form_state.build_number = str(build_number)
+                update_field(build_number_ref, "build_number", str(build_number))
             
             if version := get_pyproject("project.version") or get_pyproject("tool.poetry.version"):
-                build_version_ref.current.value = version
-                form_state.build_version = version
+                update_field(build_version_ref, "build_version", version)
             
             # Appearance - updated paths
             if splash_color := get_pyproject("tool.flet.splash.color"):
-                splash_screen_color_ref.current.value = splash_color
-                form_state.splash_screen_color = splash_color
+                update_field(splash_screen_color_ref, "splash_screen_color", splash_color)
             
             if splash_dark_color := get_pyproject("tool.flet.splash.dark_color"):
-                splash_screen_dark_color_ref.current.value = splash_dark_color
-                form_state.splash_screen_dark_color = splash_dark_color
+                update_field(splash_screen_dark_color_ref, "splash_screen_dark_color", splash_dark_color)
             
             # Splash screen settings - note these are boolean values
-            if splash_web := get_pyproject("tool.flet.splash.web"):
-                disable_web_splash_ref.current.value = not splash_web  # Invert the logic
-                form_state.disable_web_splash = not splash_web
+            if splash_web := get_pyproject("tool.flet.splash.web") is not None:
+                value = not get_pyproject("tool.flet.splash.web")  # Invert the logic
+                update_field(disable_web_splash_ref, "disable_web_splash", value)
             
-            if splash_ios := get_pyproject("tool.flet.splash.ios"):
-                disable_ios_splash_ref.current.value = not splash_ios  # Invert the logic
-                form_state.disable_ios_splash = not splash_ios
+            if splash_ios := get_pyproject("tool.flet.splash.ios") is not None:
+                value = not get_pyproject("tool.flet.splash.ios")  # Invert the logic
+                update_field(disable_ios_splash_ref, "disable_ios_splash", value)
             
-            if splash_android := get_pyproject("tool.flet.splash.android"):
-                disable_android_splash_ref.current.value = not splash_android  # Invert the logic
-                form_state.disable_android_splash = not splash_android
+            if splash_android := get_pyproject("tool.flet.splash.android") is not None:
+                value = not get_pyproject("tool.flet.splash.android")  # Invert the logic
+                update_field(disable_android_splash_ref, "disable_android_splash", value)
             
             # Package options - updated paths
             if exclude_files := get_pyproject("tool.flet.app.exclude"):
-                exclude_files_ref.current.value = exclude_files
-                form_state.exclude_files = exclude_files
+                update_field(exclude_files_ref, "exclude_files", exclude_files)
             
-            if compile_app_py := get_pyproject("tool.flet.compile.app"):
-                compile_app_py_ref.current.value = compile_app_py
-                form_state.compile_app_py = compile_app_py
+            if compile_app_py := get_pyproject("tool.flet.compile.app") is not None:
+                update_field(compile_app_py_ref, "compile_app_py", get_pyproject("tool.flet.compile.app"))
             
-            if compile_site_packages := get_pyproject("tool.flet.compile.packages"):
-                compile_site_packages_ref.current.value = compile_site_packages
-                form_state.compile_site_packages = compile_site_packages
+            if compile_site_packages := get_pyproject("tool.flet.compile.packages") is not None:
+                update_field(compile_site_packages_ref, "compile_site_packages", get_pyproject("tool.flet.compile.packages"))
             
-            if remove_app_files := get_pyproject("tool.flet.cleanup.app_files"):
-                remove_app_files_ref.current.value = remove_app_files
-                form_state.remove_app_files = remove_app_files
+            if remove_app_files := get_pyproject("tool.flet.cleanup.app_files") is not None:
+                update_field(remove_app_files_ref, "remove_app_files", get_pyproject("tool.flet.cleanup.app_files"))
             
-            if remove_package_files := get_pyproject("tool.flet.cleanup.package_files"):
-                remove_package_files_ref.current.value = remove_package_files
-                form_state.remove_package_files = remove_package_files
+            if remove_package_files := get_pyproject("tool.flet.cleanup.package_files") is not None:
+                update_field(remove_package_files_ref, "remove_package_files", get_pyproject("tool.flet.cleanup.package_files"))
             
-            # Web specific options - correct paths
+            # Continue with the rest of the fields using the update_field helper
+            # Web specific options
             if base_url := get_pyproject("tool.flet.web.base_url"):
-                base_url_ref.current.value = base_url
-                form_state.base_url = base_url
+                update_field(base_url_ref, "base_url", base_url)
             
             if web_renderer := get_pyproject("tool.flet.web.renderer"):
-                web_renderer_ref.current.value = web_renderer
-                form_state.web_renderer = web_renderer
+                update_field(web_renderer_ref, "web_renderer", web_renderer)
             
             if url_strategy := get_pyproject("tool.flet.web.route_url_strategy"):
-                url_strategy_ref.current.value = url_strategy
-                form_state.url_strategy = url_strategy
+                update_field(url_strategy_ref, "url_strategy", url_strategy)
             
             if pwa_bg_color := get_pyproject("tool.flet.web.pwa_background_color"):
-                pwa_bg_color_ref.current.value = pwa_bg_color
-                form_state.pwa_bg_color = pwa_bg_color
+                update_field(pwa_bg_color_ref, "pwa_bg_color", pwa_bg_color)
             
             if pwa_theme_color := get_pyproject("tool.flet.web.pwa_theme_color"):
-                pwa_theme_color_ref.current.value = pwa_theme_color
-                form_state.pwa_theme_color = pwa_theme_color
+                update_field(pwa_theme_color_ref, "pwa_theme_color", pwa_theme_color)
             
-            if enable_color_emojis := get_pyproject("tool.flet.web.use_color_emoji"):
-                enable_color_emojis_ref.current.value = enable_color_emojis
-                form_state.enable_color_emojis = enable_color_emojis
+            if enable_color_emojis := get_pyproject("tool.flet.web.use_color_emoji") is not None:
+                update_field(enable_color_emojis_ref, "enable_color_emojis", get_pyproject("tool.flet.web.use_color_emoji"))
             
-            # iOS specific options - updated paths
+            # iOS specific options
             if team_id := get_pyproject("tool.flet.ios.team_id"):
-                team_id_ref.current.value = team_id
-                form_state.team_id = team_id
+                update_field(team_id_ref, "team_id", team_id)
             
             if export_method := get_pyproject("tool.flet.ios.export_method"):
-                export_method_ref.current.value = export_method
-                form_state.export_method = export_method
+                update_field(export_method_ref, "export_method", export_method)
             
             if signing_certificate := get_pyproject("tool.flet.ios.signing_certificate"):
-                signing_certificate_ref.current.value = signing_certificate
-                form_state.signing_certificate = signing_certificate
+                update_field(signing_certificate_ref, "signing_certificate", signing_certificate)
             
             if provisioning_profile := get_pyproject("tool.flet.ios.provisioning_profile"):
-                provisioning_profile_ref.current.value = provisioning_profile
-                form_state.provisioning_profile = provisioning_profile
+                update_field(provisioning_profile_ref, "provisioning_profile", provisioning_profile)
             
             if ios_info_plist := get_pyproject("tool.flet.ios.info"):
-                ios_info_plist_ref.current.value = ios_info_plist
-                form_state.ios_info_plist = ios_info_plist
+                update_field(ios_info_plist_ref, "ios_info_plist", ios_info_plist)
             
             # Deep linking configuration
             if deep_linking_scheme := get_pyproject("tool.flet.deep_linking.scheme"):
-                ios_deep_linking_scheme_ref.current.value = deep_linking_scheme
-                android_deep_linking_scheme_ref.current.value = deep_linking_scheme
-                form_state.ios_deep_linking_scheme = deep_linking_scheme
-                form_state.android_deep_linking_scheme = deep_linking_scheme
+                update_field(ios_deep_linking_scheme_ref, "ios_deep_linking_scheme", deep_linking_scheme)
+                update_field(android_deep_linking_scheme_ref, "android_deep_linking_scheme", deep_linking_scheme)
             
             if deep_linking_host := get_pyproject("tool.flet.deep_linking.host"):
-                ios_deep_linking_host_ref.current.value = deep_linking_host
-                android_deep_linking_host_ref.current.value = deep_linking_host
-                form_state.ios_deep_linking_host = deep_linking_host
-                form_state.android_deep_linking_host = deep_linking_host
+                update_field(ios_deep_linking_host_ref, "ios_deep_linking_host", deep_linking_host)
+                update_field(android_deep_linking_host_ref, "android_deep_linking_host", deep_linking_host)
             
             # Platform-specific deep linking
             if ios_deep_linking_scheme := get_pyproject("tool.flet.ios.deep_linking.scheme"):
-                ios_deep_linking_scheme_ref.current.value = ios_deep_linking_scheme
-                form_state.ios_deep_linking_scheme = ios_deep_linking_scheme
+                update_field(ios_deep_linking_scheme_ref, "ios_deep_linking_scheme", ios_deep_linking_scheme)
             
             if ios_deep_linking_host := get_pyproject("tool.flet.ios.deep_linking.host"):
-                ios_deep_linking_host_ref.current.value = ios_deep_linking_host
-                form_state.ios_deep_linking_host = ios_deep_linking_host
+                update_field(ios_deep_linking_host_ref, "ios_deep_linking_host", ios_deep_linking_host)
             
             if android_deep_linking_scheme := get_pyproject("tool.flet.android.deep_linking.scheme"):
-                android_deep_linking_scheme_ref.current.value = android_deep_linking_scheme
-                form_state.android_deep_linking_scheme = android_deep_linking_scheme
+                update_field(android_deep_linking_scheme_ref, "android_deep_linking_scheme", android_deep_linking_scheme)
             
             if android_deep_linking_host := get_pyproject("tool.flet.android.deep_linking.host"):
-                android_deep_linking_host_ref.current.value = android_deep_linking_host
-                form_state.android_deep_linking_host = android_deep_linking_host
+                update_field(android_deep_linking_host_ref, "android_deep_linking_host", android_deep_linking_host)
             
-            # Android specific options - updated paths
+            # Android specific options
             if android_metadata := get_pyproject("tool.flet.android.meta_data"):
-                android_metadata_ref.current.value = android_metadata
-                form_state.android_metadata = android_metadata
+                update_field(android_metadata_ref, "android_metadata", android_metadata)
             
             if android_features := get_pyproject("tool.flet.android.feature"):
-                android_features_ref.current.value = android_features
-                form_state.android_features = android_features
+                update_field(android_features_ref, "android_features", android_features)
             
             if android_permissions := get_pyproject("tool.flet.android.permission"):
-                android_permissions_ref.current.value = android_permissions
-                form_state.android_permissions = android_permissions
+                update_field(android_permissions_ref, "android_permissions", android_permissions)
             
             if android_key_store := get_pyproject("tool.flet.android.signing.key_store"):
-                android_key_store_ref.current.value = android_key_store
-                form_state.android_key_store = android_key_store
+                update_field(android_key_store_ref, "android_key_store", android_key_store)
             
             if android_key_alias := get_pyproject("tool.flet.android.signing.key_alias"):
-                android_key_alias_ref.current.value = android_key_alias
-                form_state.android_key_alias = android_key_alias
+                update_field(android_key_alias_ref, "android_key_alias", android_key_alias)
             
-            if split_apk_per_abi := get_pyproject("tool.flet.android.split_per_abi"):
-                split_apk_per_abi_ref.current.value = split_apk_per_abi
-                form_state.split_apk_per_abi = split_apk_per_abi
+            if split_apk_per_abi := get_pyproject("tool.flet.android.split_per_abi") is not None:
+                update_field(split_apk_per_abi_ref, "split_apk_per_abi", get_pyproject("tool.flet.android.split_per_abi"))
             
-            # macOS specific options - updated paths
+            # macOS specific options
             if macos_entitlements := get_pyproject("tool.flet.macos.entitlement"):
-                macos_entitlements_ref.current.value = macos_entitlements
-                form_state.macos_entitlements = macos_entitlements
+                update_field(macos_entitlements_ref, "macos_entitlements", macos_entitlements)
             
             if macos_info_plist := get_pyproject("tool.flet.macos.info"):
-                macos_info_plist_ref.current.value = macos_info_plist
-                form_state.macos_info_plist = macos_info_plist
+                update_field(macos_info_plist_ref, "macos_info_plist", macos_info_plist)
             
             # Update the UI
             page.update()
-            # TODO: self.update_command()
+            
+            # Update the command display
+            update_command_display()
+
         except Exception as e:
             print(f"Error reading pyproject.toml: {e}")
 
@@ -381,12 +309,46 @@ def main(page: ft.Page):
             command_display_ref.current.value = form_state.get_build_command()
             page.update()
 
+    def connect_field(field_ref, state_property):
+        """Connect a field to FormState property"""
+        def on_field_change(e):
+            form_state.update(state_property, field_ref.current.value)
+        
+        return on_field_change
+
+    def on_page_pubsub(message):
+        if message.get("type") == "toast":
+            toast_message = message.get("message", "")
+            toast_type = message.get("toast_type", "default")
+            duration = message.get("duration", 3)
+            toast_id = message.get("toast_id", None)
+            
+            # Show the toast
+            toaster.show_toast(
+                text=toast_message,
+                toast_type=toast_type,
+                duration=duration,
+                toast_id=toast_id
+            )
+        elif message.get("type") == "remove_toast":
+            toast_id = message.get("toast_id")
+            if toast_id:
+                toaster.remove_toast_by_id(toast_id)
+    
+    page.pubsub.subscribe(on_page_pubsub)
+
+    form_state.update("verbose_build", True)
+    update_command_display()
+
     # MARK: ui #
     header = ft.Container(
         FactoryHeader(),
         margin=ft.margin.only(left=5, right=10, top=10),
     )
-    platforms_row = PlatformsRow([Platform.WINDOWS, Platform.MACOS, Platform.LINUX, Platform.ANDROID_APK, Platform.ANDROID_AAP, Platform.IOS, Platform.WEB])
+    platforms_row = PlatformsRow(
+        [Platform.WINDOWS, Platform.MACOS, Platform.LINUX, Platform.ANDROID_APK, Platform.ANDROID_AAP, Platform.IOS, Platform.WEB], 
+        on_change=lambda platform: (form_state.update("selected_platform", platform), update_command_display()),
+    )
     
     building_configuration_card = FactoryCard(
         title="Building configuration",
@@ -491,7 +453,7 @@ def main(page: ft.Page):
         content=[
             FactoryField(
                 title="Build number",
-                hint_text="Identifier used as an internal version number",
+                hint_text="Identifier used as an internal version number (as int)",
                 widget=FactoryTextField(
                     hint_text="0",
                     ref=build_number_ref,
@@ -536,9 +498,9 @@ def main(page: ft.Page):
                 hint_text="",
                 widget=ft.Column(
                     controls=[
-                        FactoryCheckBox(label="Disable web splash screen", ref=disable_web_splash_ref, on_change=connect_field(disable_web_splash_ref, "disable_web_splash")),
-                        FactoryCheckBox(label="Disable iOS splash screen", ref=disable_ios_splash_ref, on_change=connect_field(disable_ios_splash_ref, "disable_ios_splash")),
-                        FactoryCheckBox(label="Disable Android splash screen", ref=disable_android_splash_ref, on_change=connect_field(disable_android_splash_ref, "disable_android_splash")),
+                        FactoryCheckBox(label="Disable web splash screen", ref=disable_web_splash_ref, on_change=connect_field(disable_web_splash_ref, "disable_web_splash_screen")),
+                        FactoryCheckBox(label="Disable iOS splash screen", ref=disable_ios_splash_ref, on_change=connect_field(disable_ios_splash_ref, "disable_ios_splash_screen")),
+                        FactoryCheckBox(label="Disable Android splash screen", ref=disable_android_splash_ref, on_change=connect_field(disable_android_splash_ref, "disable_android_splash_screen")),
                     ]
                 )
             )
@@ -554,7 +516,7 @@ def main(page: ft.Page):
                 widget=FactoryBadgeInput(
                     hint_text="e.g. __pycache__/",
                     ref=exclude_files_ref,
-                    on_change=connect_field(exclude_files_ref, "exclude_files"),
+                    on_change=connect_field(exclude_files_ref, "exclude_additional_files"),
                 )
             ),
             FactoryField(
@@ -562,10 +524,10 @@ def main(page: ft.Page):
                 hint_text="",
                 widget=ft.Column(
                     controls=[
-                        FactoryCheckBox(label="Compile app's .py files to .pyc", ref=compile_app_py_ref, on_change=connect_field(compile_app_py_ref, "compile_app_py")),
-                        FactoryCheckBox(label="Compile site packages' .py files to .pyc", ref=compile_site_packages_ref, on_change=connect_field(compile_site_packages_ref, "compile_site_packages")),
-                        FactoryCheckBox(label="Remove unnecessary app files", ref=remove_app_files_ref, on_change=connect_field(remove_app_files_ref, "remove_app_files")),
-                        FactoryCheckBox(label="Remove unnecessary package files", ref=remove_package_files_ref, on_change=connect_field(remove_package_files_ref, "remove_package_files")),
+                        FactoryCheckBox(label="Compile app's .py files to .pyc", ref=compile_app_py_ref, on_change=connect_field(compile_app_py_ref, "compile_app_py_files")),
+                        FactoryCheckBox(label="Compile site packages' .py files to .pyc", ref=compile_site_packages_ref, on_change=connect_field(compile_site_packages_ref, "compile_site_packages_py_files")),
+                        FactoryCheckBox(label="Remove unnecessary app files", ref=remove_app_files_ref, on_change=connect_field(remove_app_files_ref, "remove_unnecessary_app_files")),
+                        FactoryCheckBox(label="Remove unnecessary package files", ref=remove_package_files_ref, on_change=connect_field(remove_package_files_ref, "remove_unnecessary_package_files")),
                     ]
                 )
             )
@@ -592,7 +554,6 @@ def main(page: ft.Page):
                         FactoryDropdownOption(key="canvaskit", text="CanvasKit"),
                         FactoryDropdownOption(key="html", text="HTML"),
                     ],
-                    value="canvaskit",
                     ref=web_renderer_ref,
                     enable_filter=True,
                     on_change=connect_field(web_renderer_ref, "web_renderer"),
@@ -606,10 +567,9 @@ def main(page: ft.Page):
                         FactoryDropdownOption(key="path", text="Path"),
                         FactoryDropdownOption(key="hash", text="Hash"),
                     ],
-                    value="path",
                     enable_filter=True,
                     ref=url_strategy_ref,
-                    on_change=connect_field(url_strategy_ref, "url_strategy"),
+                    on_change=connect_field(url_strategy_ref, "route_url_strategy"),
                 )
             ),
             FactoryField(
@@ -618,7 +578,7 @@ def main(page: ft.Page):
                 widget=FactoryTextField(
                     hint_text="e.g. #5b21b6",
                     ref=pwa_bg_color_ref,
-                    on_change=connect_field(pwa_bg_color_ref, "pwa_bg_color"),
+                    on_change=connect_field(pwa_bg_color_ref, "pwa_background_color"),
                 )
             ),
             FactoryField(
@@ -849,10 +809,10 @@ def main(page: ft.Page):
                 hint_text="",
                 widget=ft.Column( # location,camera,microphone,photo_library
                     controls=[
-                        FactoryCheckBox(label="Location", ref=location_permission_ref, on_change=connect_field(location_permission_ref, "location_permission")),
-                        FactoryCheckBox(label="Camera", ref=camera_permission_ref, on_change=connect_field(camera_permission_ref, "camera_permission")),
-                        FactoryCheckBox(label="Microphone", ref=microphone_permission_ref, on_change=connect_field(microphone_permission_ref, "microphone_permission")),
-                        FactoryCheckBox(label="Photo Library", ref=photo_library_permission_ref, on_change=connect_field(photo_library_permission_ref, "photo_library_permission")),
+                        FactoryCheckBox(label="Location", ref=location_permission_ref, on_change=connect_field(location_permission_ref, "permission_location")),
+                        FactoryCheckBox(label="Camera", ref=camera_permission_ref, on_change=connect_field(camera_permission_ref, "permission_camera")),
+                        FactoryCheckBox(label="Microphone", ref=microphone_permission_ref, on_change=connect_field(microphone_permission_ref, "permission_microphone")),
+                        FactoryCheckBox(label="Photo Library", ref=photo_library_permission_ref, on_change=connect_field(photo_library_permission_ref, "permission_photo_library")),
                     ]
                 )
             )

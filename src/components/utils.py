@@ -11,19 +11,28 @@ colors_map = {
 
 
 class Platform(Enum):
-    WINDOWS = "Windows"
-    MACOS = "macOS"
-    LINUX = "Linux"
-    ANDROID_AAP = "Android (AAP)"
-    ANDROID_APK = "Android (APK)"
-    IOS = "iOS"
-    WEB = "Web"
+    WINDOWS = ("Windows", "windows")
+    MACOS = ("macOS", "macos")
+    LINUX = ("Linux", "linux")
+    ANDROID_AAP = ("Android (AAP)", "aab")
+    ANDROID_APK = ("Android (APK)", "apk")
+    IOS = ("iOS", "ipa")
+    WEB = ("Web", "web")
+    
+    def __init__(self, display_value, cmd_value):
+        self.display_value = display_value
+        self.cmd_value = cmd_value
+    
+    @property
+    def value(self): 
+        # default value, cmd_value is used only to build the cli command
+        return self.display_value
 
 
 current_os = platform.system().lower()
 buildable_platforms_map = {
     "windows": [Platform.WINDOWS, Platform.ANDROID_APK, Platform.ANDROID_AAP, Platform.LINUX, Platform.WEB],
-    "darwin": [Platform.MACOS, Platform.ANDROID_APK, Platform.ANDROID_AAP, Platform.IOS, Platform.LINUX, Platform.WEB],
+    "darwin": [Platform.MACOS, Platform.ANDROID_APK, Platform.ANDROID_AAP, Platform.IOS, Platform.WEB],
     "linux": [Platform.LINUX, Platform.ANDROID_APK, Platform.ANDROID_AAP, Platform.WEB],
 }
 # get the buildable platforms for the current os
