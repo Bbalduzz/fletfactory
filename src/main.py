@@ -35,6 +35,7 @@ def main(page: ft.Page):
     page.window.resizable = False
     page.window.title_bar_hidden = True
     page.window.title_bar_buttons_hidden = True
+    # page.window.icon = "icon.png"
     page.window.center()
     page.bgcolor = "#f9fafb"
     page.fonts = {
