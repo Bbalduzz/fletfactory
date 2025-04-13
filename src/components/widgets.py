@@ -180,7 +180,6 @@ class FactoryBadge(ft.TextButton):
         super().__init__(
             on_click=on_click,
             **kwargs
-            # width=100
         )
         self.text = text
         self.style = ft.ButtonStyle(

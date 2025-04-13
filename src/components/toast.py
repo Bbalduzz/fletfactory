@@ -70,9 +70,9 @@ class ToastColors(Enum):
     }
     DEFAULT = {
         "light": {
-            "bgcolor": ft.Colors.WHITE,  # Replace with `ft.Colors.WHITE` if using a specific color module
+            "bgcolor": ft.Colors.WHITE,
             "border_color": "#f1f1f1",
-            "text_color": ft.Colors.BLACK,  # Replace with `ft.Colors.BLACK` if using a specific color module
+            "text_color": ft.Colors.BLACK,
         },
         "dark": {
             "bgcolor": "#1e1e1e",
@@ -82,9 +82,9 @@ class ToastColors(Enum):
     }
     PROMISE = {
         "light": {
-            "bgcolor": ft.Colors.WHITE,  # Replace with `ft.Colors.WHITE` if using a specific color module
+            "bgcolor": ft.Colors.WHITE,
             "border_color": "#f1f1f1",
-            "text_color": ft.Colors.BLACK,  # Replace with `ft.Colors.BLACK` if using a specific color module
+            "text_color": ft.Colors.BLACK,
         },
         "dark": {
             "bgcolor": "#1e1e1e",
@@ -157,7 +157,7 @@ class Toast(ft.Container):
             return ft.Row(
                 [
                     ft.Icon(
-                        name=ft.icons.INFO_ROUNDED,
+                        name=ft.Icons.INFO_ROUNDED,
                         size=18,
                         color=colors["text_color"],
                     ),
@@ -170,7 +170,7 @@ class Toast(ft.Container):
             return ft.Row(
                 [
                     ft.Icon(
-                        name=ft.icons.CHECK_CIRCLE_ROUNDED,
+                        name=ft.Icons.CHECK_CIRCLE_ROUNDED,
                         size=18,
                         color=colors["text_color"],
                     ),
@@ -183,7 +183,7 @@ class Toast(ft.Container):
             return ft.Row(
                 [
                     ft.Icon(
-                        name=ft.icons.WARNING_ROUNDED,
+                        name=ft.Icons.WARNING_ROUNDED,
                         size=18,
                         color=colors["text_color"],
                     ),
@@ -196,7 +196,7 @@ class Toast(ft.Container):
             return ft.Row(
                 [
                     ft.Icon(
-                        name=ft.icons.ERROR_ROUNDED,
+                        name=ft.Icons.ERROR_ROUNDED,
                         size=18,
                         color=colors["text_color"],
                     ),

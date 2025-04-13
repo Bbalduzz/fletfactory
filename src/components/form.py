@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Callable
+from os.path import expanduser
 from .utils import Platform
 import shlex
-from os.path import expanduser
+
 
 @dataclass
 class FormState:
@@ -58,13 +59,13 @@ class FormState:
     android_metadata: List[str] = field(default_factory=list)
     android_features: List[str] = field(default_factory=list)
     android_permissions: List[str] = field(default_factory=list)
-    android_signing_key_store: str = ""
-    android_signing_key_store_password: str = ""
-    android_signing_key_password: str = ""
-    android_signing_key_alias: str = ""
+    android_key_store: str = ""
+    android_key_store_password: str = ""
+    android_key_password: str = ""
+    android_key_alias: str = ""
     android_deep_linking_scheme: str = ""
     android_deep_linking_host: str = ""
-    split_apk_per_abis: bool = False
+    split_apk_per_abi: bool = False
     
     # macOS specific options
     macos_entitlements: List[str] = field(default_factory=list)
@@ -78,43 +79,38 @@ class FormState:
     
     # Selected platform
     selected_platform: Optional[Platform] = None
-
-    verbose_build = False   
+    verbose_build: bool = False
+    
+    # Callback on change
+    on_change: Optional[Callable] = None
 
     def update(self, field_name, value):
         """Update a field and trigger the callback"""
         if hasattr(self, field_name):
             setattr(self, field_name, value)
-            if self.on_change:
+            # only call on_change if it's not None
+            if self.on_change is not None:
                 self.on_change()
 
     def get_build_command(self):
         """Generate the flet build command based on current state"""
-        # Start with base command
         cmd = ["flet", "build"]
         
-        # Get CLI arguments from the cli_map property
         cli_args = self.cli_map()
-        # Convert the dictionary to command-line arguments
+        # convert the dictionary to command-line arguments
         for key, value in cli_args.items():
-            # positional arguments
             if key == "platform":
                 cmd.append(value)
             elif key == "python_app_path":
                 cmd.append(expanduser(value))
-
-            # Handle boolean flags
             elif isinstance(value, bool) and value:
                 cmd.append(f"{key}")
-            # Handle lists
             elif isinstance(value, list) and value:
                 for item in value:
                     cmd.append(f"{key}={shlex.quote(item)}")
-            # Handle regular key-value pairs
             elif value:
                 cmd.append(f"{key}={shlex.quote(value)}")
         
-        # Add module name if specified
         if self.module_name:
             cmd.append(f"--module={self.module_name}")
         if self.verbose_build:
@@ -124,6 +120,9 @@ class FormState:
     
     def cli_map(self) -> dict:
         """Convert FormState to a dictionary of CLI arguments."""
+        if not self.selected_platform:
+            return {}
+            
         cli_map = {
             # Basic options
             "platform": self.selected_platform.cmd_value.lower(),
@@ -173,7 +172,7 @@ class FormState:
             "--android-meta-data": self.android_metadata,
             "--android-features": self.android_features,
             "--android-permissions": self.android_permissions,
-            "--split-per-abi": self.split_apk_per_abis,
+            "--split-per-abi": self.split_apk_per_abi,
             
             # macOS specific options
             "--macos-entitlements": self.macos_entitlements,
@@ -193,3 +192,15 @@ class FormState:
         # Filter out empty or False values
         return {k: v for k, v in cli_map.items() if v or isinstance(v, (int, float))}
     
+    def to_dict(self):
+        """Convert model to a dictionary for saving configuration"""
+        return {k: v for k, v in self.__dict__.items() 
+                if not k.startswith('_') and k != 'on_change' and k != 'selected_platform'}
+    
+    def from_dict(self, data):
+        """Load model from a dictionary"""
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+        if self.on_change is not None:
+            self.on_change()

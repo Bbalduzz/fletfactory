@@ -90,20 +90,29 @@ class FactorySidebar(ft.Container):
                             )
                         ),
                     ),
-                    ft.Row([
-                        ft.Image(
-                            src="https://raw.githubusercontent.com/flet-dev/flet/e3f4d16d6f9412175c29e8b982146230ecc1a7d5/media/logo/flet-logo-no-text.svg",
-                            color=ft.Colors.BLACK12,
-                            width=16,
-                            height=16,
-                        ),
-                        ft.Image(
-                            src="https://upload.wikimedia.org/wikipedia/commons/9/91/Octicons-mark-github.svg",
-                            color=ft.Colors.BLACK12,
-                            width=16,
-                            height=16,
-                        ),
-                    ])
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Image(
+                                    src="/icons/flet-logo.svg",
+                                    color=ft.Colors.BLACK12,
+                                    width=15,
+                                    height=15,
+                                ),
+                                on_click=lambda e: self.page.launch_url("https://flet.dev")
+                            ),
+                            ft.Container(
+                                content=ft.Image(
+                                    src="/icons/github-logo.svg",
+                                    color=ft.Colors.BLACK12,
+                                    width=15,
+                                    height=15,
+                                ),
+                                on_click=lambda e: self.page.launch_url("https://github.com/Bbalduzz/fletfactory")
+                            )
+                        ],
+                        # spacing=5
+                    )
                 ],
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             )
@@ -140,8 +149,22 @@ class FactorySidebar(ft.Container):
         content_area = ft.Column(
             controls=[
                 flutter_doctor_section,
-                FactoryTextField("terminal pipeline", ref=self._flet_build_output_ref, text_style=ft.TextStyle(font_family="FiraCode Light", size=6), content_padding=ft.padding.all(10), multiline=True, max_lines=20),
-                FactoryTextField("current command", ref=self._flet_command_ref, text_style=ft.TextStyle(font_family="FiraCode Retina", size=10), content_padding=ft.padding.all(10), multiline=True, read_only=True),
+                FactoryTextField(
+                    "terminal pipeline",
+                    ref=self._flet_build_output_ref,
+                    text_style=ft.TextStyle(font_family="FiraCode Light", size=6),
+                    content_padding=ft.padding.all(10),
+                    multiline=True,
+                    max_lines=20
+                ),
+                FactoryTextField(
+                    "current command",
+                    ref=self._flet_command_ref,
+                    text_style=ft.TextStyle(font_family="FiraCode Retina", size=10),
+                    content_padding=ft.padding.all(10),
+                    multiline=True,
+                    read_only=True
+                ),
                 FactoryButton(
                     ft.Row(
                         [
@@ -289,7 +312,7 @@ class FactorySidebar(ft.Container):
         command_field = self._flet_command_ref.current
         
         # Get the command to execute
-        command = command_field.value
+        command = shlex.split(command_field.value)
         if not command:
             output_field.value = "No command to execute. Please select a platform and configure build options."
             output_field.update()

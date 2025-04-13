@@ -5,6 +5,7 @@ from pathlib import Path
 from os import path, environ
 from typing import List
 import toml
+import shlex
 
 from components.utils import colors_map, Platform, buildable_platforms
 from components.waterfall_layout import WaterfallView
@@ -307,7 +308,7 @@ def main(page: ft.Page):
 
     def update_command_display():
         if command_display_ref.current:
-            command_display_ref.current.value = form_state.get_build_command()
+            command_display_ref.current.value = shlex.join(form_state.get_build_command())
             page.update()
 
     def connect_field(field_ref, state_property):
@@ -820,14 +821,13 @@ def main(page: ft.Page):
         ]
     )
     
-    # Create a scrollable right content area
     right_content = ft.Container(
         content=ft.Column(
             controls=[
                 header, 
-                ft.Container(height=10),  # Spacing
+                ft.Container(height=10),  # spacing
                 platforms_row,
-                ft.Container(height=10),  # Spacing
+                ft.Container(height=10),  # spacing
                 WaterfallView(
                     cross_axis_count=2,
                     main_axis_spacing=10,
@@ -847,10 +847,10 @@ def main(page: ft.Page):
                     ],
                 )
             ],
-            scroll=ft.ScrollMode.HIDDEN,  # Enable scrolling for this column
+            scroll=ft.ScrollMode.HIDDEN,
             spacing=0,
-            height=page.window.height,  # Full height
-            width=page.window.width - 290,  # Width minus sidebar
+            height=page.window.height,
+            width=page.window.width - 290,
         ),
         padding=20,
     )
