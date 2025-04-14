@@ -30,6 +30,7 @@ environ["FLET_CLI_NO_RICH_OUTPUT"] = "1"
 
 def main(page: ft.Page):
     page.title = "Flet Factory"
+    page.on_error = lambda e: print(e.data)
     page.padding = 0
     page.window.width = 960
     page.window.height = 800
@@ -60,6 +61,7 @@ def main(page: ft.Page):
     python_app_path_ref = ft.Ref[FactoryTextField]()
     output_directory_ref = ft.Ref[FactoryTextField]()
     module_name_ref = ft.Ref[FactoryTextField]()
+    arch_ref = ft.Ref[FactoryDropdown]()
     flutter_args_ref = ft.Ref[FactoryBadgeInput]()
     clear_build_cache_ref = ft.Ref[FactoryCheckBox]()
     
@@ -169,6 +171,9 @@ def main(page: ft.Page):
             
             if organization := get_pyproject("tool.flet.org"):
                 update_field(organization_ref, "organization", organization)
+
+            if architecture := get_pyproject("tool.flet.arch"):
+                update_field(arch_ref, "arch", architecture)
             
             # Versioning
             if build_number := get_pyproject("tool.flet.build_number"):
@@ -381,6 +386,24 @@ def main(page: ft.Page):
                     hint_text="e.g main",
                     ref=module_name_ref,
                     on_change=connect_field(module_name_ref, "module_name"),
+                )
+            ),
+            FactoryField(
+                title="Architecture",
+                hint_text="package for specific architectures only. Used with Android and macOS builds only.",
+                widget=FactoryDropdown(
+                   options=[
+                        FactoryDropdownOption(
+                            key="arm64",
+                            text="arm64"
+                        ),
+                        FactoryDropdownOption(
+                            key="x86_64",
+                            text="x86_64"
+                        ),
+                   ],
+                   ref=arch_ref,
+                   on_change=connect_field(arch_ref, "arch"),
                 )
             ),
             FactoryField(

@@ -11,10 +11,35 @@ class FactoryButton(ft.TextButton):
         )
         self.style = ft.ButtonStyle(
             shape=ft.RoundedRectangleBorder(radius=6),
-            bgcolor=colors_map["primary"],
-            color=colors_map["text_accent"],
+            bgcolor={
+                ft.ControlState.DEFAULT: colors_map["primary"],
+                ft.ControlState.DISABLED: colors_map["secondary"],
+            },
+            color={
+                ft.ControlState.DEFAULT: colors_map["text_accent"],
+                ft.ControlState.DISABLED: colors_map["text_secondary"],
+            },
             side=ft.BorderSide(
                 color=colors_map["primary"],
+                stroke_align=1,
+                width=1,
+            )
+        )
+
+class FactorySecondaryButton(ft.IconButton):
+    def __init__(self, content, on_click=None, **kwargs):
+        super().__init__(
+            content=content,
+            on_click=on_click,
+            **kwargs
+        )
+        self.style = ft.ButtonStyle(
+            shape=ft.RoundedRectangleBorder(radius=6),
+            bgcolor="#ffffff",
+            color=colors_map["text_secondary"],
+            overlay_color="#ffffff",
+            side=ft.BorderSide(
+                color=colors_map["border_normal"],
                 stroke_align=1,
                 width=1,
             )
@@ -484,4 +509,14 @@ class FactoryHeader(ft.Row):
                     )),
                 ]
             ),
+            FactorySecondaryButton(
+                content = ft.Image(
+                    src = "/icons/settings.svg",
+                    width=16,
+                    height=16,
+                    color=colors_map["text_secondary"],
+                ),
+                width=35,
+                height=35,
+            )
         ]

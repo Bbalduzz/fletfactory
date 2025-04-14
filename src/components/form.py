@@ -11,6 +11,7 @@ class FormState:
     python_app_path: str = ""
     output_directory: str = ""
     module_name: str = ""
+    arch: str = ""
     flutter_args: List[str] = field(default_factory=list)
     clear_build_cache: bool = False
     
@@ -127,6 +128,7 @@ class FormState:
             # Basic options
             "platform": self.selected_platform.cmd_value.lower(),
             "python_app_path": self.python_app_path,
+            "--arch": self.arch,
             "--output": self.output_directory,
             "--clear-cache": self.clear_build_cache,
 

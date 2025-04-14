@@ -6,7 +6,7 @@ import re
 import json
 import asyncio
 import shlex
-from os import environ
+from os import environ as os_environ
 
 # Flutter doctor components that are typically checked
 EXPECTED_COMPONENTS = [
@@ -21,10 +21,13 @@ EXPECTED_COMPONENTS = [
 ]
 
 async def run_flutter_doctor():
+    # env = os_environ.copy()
+
     process = await asyncio.create_subprocess_exec(
         'flutter', 'doctor', '-v',
         stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT
+        stderr=asyncio.subprocess.STDOUT,
+        # env=env
     )
 
     # match check results
@@ -94,7 +97,7 @@ class FactorySidebar(ft.Container):
                         [
                             ft.Container(
                                 content=ft.Image(
-                                    src="/icons/flet-logo.svg",
+                                    src="/icons/logos/flet-logo.svg",
                                     color=ft.Colors.BLACK12,
                                     width=15,
                                     height=15,
@@ -103,7 +106,7 @@ class FactorySidebar(ft.Container):
                             ),
                             ft.Container(
                                 content=ft.Image(
-                                    src="/icons/github-logo.svg",
+                                    src="/icons/logos/github-logo.svg",
                                     color=ft.Colors.BLACK12,
                                     width=15,
                                     height=15,
@@ -190,15 +193,18 @@ class FactorySidebar(ft.Container):
         )
         
         # Combine all elements into the sidebar
-        self.content = ft.Column(
-            controls=[
-                header,
-                content_area,
-                ft.Container(height=20)
-            ],
-            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-            spacing=10,
-            expand=True,
+        self.content = ft.Container(
+            ft.Column(
+                controls=[
+                    header,
+                    content_area,
+                    # ft.Container(height=20)
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                spacing=10,
+                expand=True,
+            ),
+            padding=ft.padding.only(bottom=10),
         )
     
     def create_loading_rows(self):
@@ -308,6 +314,7 @@ class FactorySidebar(ft.Container):
         """Execute the flet build command and stream output to the terminal"""
         # Get references to UI elements
         build_button = self._build_button_ref.current
+        active_btn_icon = build_button.content.controls[0]
         output_field = self._flet_build_output_ref.current
         command_field = self._flet_command_ref.current
         
@@ -325,6 +332,7 @@ class FactorySidebar(ft.Container):
         
         # Disable the build button
         build_button.disabled = True
+        build_button.content.controls[0] = ft.ProgressRing(width=12, height=12, stroke_width=1, color=colors_map["primary"])
         build_button.update()
 
         build_toast_id = "build_progress_toast"
@@ -349,7 +357,7 @@ class FactorySidebar(ft.Container):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
                 env={
-                    **environ, 
+                    **os_environ, 
                     "LINES": "40",
                     "COLUMNS": "40",
                     # "CHROME_EXECUTABLE": "/Applications/Thorium.app/Contents/MacOS/Thorium"
@@ -393,6 +401,7 @@ class FactorySidebar(ft.Container):
         finally:
             # Re-enable the build button
             build_button.disabled = False
+            build_button.content.controls[0] = active_btn_icon
             build_button.update()
 
     def show_toast(self, message, toast_type="default", duration=3):
