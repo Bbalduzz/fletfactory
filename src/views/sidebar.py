@@ -7,60 +7,10 @@ import json
 import asyncio
 import shlex
 from os import environ as os_environ
-
-# Flutter doctor components that are typically checked
-EXPECTED_COMPONENTS = [
-    "Flutter",
-    "Android toolchain",
-    "Xcode",
-    "Chrome",
-    "Android Studio",
-    "VS Code",
-    "Connected device",
-    "Network resources"
-]
-
-async def run_flutter_doctor():
-    # env = os_environ.copy()
-
-    process = await asyncio.create_subprocess_exec(
-        'flutter', 'doctor', '-v',
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        # env=env
-    )
-
-    # match check results
-    check_pattern = re.compile(r'^\[(.)?\]\s*(.*?)(?:\s*\(.*\))?$')
-    detected_components = set()
-    
-    while True:
-        line_bytes = await process.stdout.readline()
-        if not line_bytes:
-            break
-            
-        line = line_bytes.decode('utf-8')
-        if not line.strip():
-            continue
-            
-        # check if this is a section header line
-        match = check_pattern.match(line.strip())
-        if match:
-            status_symbol, description = match.groups()
-            # determine status based on symbol
-            status = "PASSED" if status_symbol == "✓" else "FAILED" if status_symbol == "✗" else "WARNING" if status_symbol == "!" else "UNKNOWN"
-            component_name = description.strip()
-            detected_components.add(component_name)
-            result = {component_name: status}
-            yield json.dumps(result)
-    
-    await process.wait() # wait for process to complete
-    
-    if process.returncode != 0:
-        yield json.dumps({"Error": f"Flutter doctor exited with code {process.returncode}"})
+from settings_manager import SettingsManager
 
 class FactorySidebar(ft.Container):
-    def __init__(self, version="v0.0.1", command_ref=None):
+    def __init__(self, version="v0.0.1", command_ref=None, auto_save_manager=None):
         super().__init__()
         self.version = version
 
@@ -72,9 +22,7 @@ class FactorySidebar(ft.Container):
         
         self._flet_command_ref = command_ref
         self._flet_build_output_ref = ft.Ref[ft.TextField]()
-        self._flutter_results_ref = ft.Ref[ft.Column]()
         self._build_button_ref = ft.Ref[FactoryButton]()
-        self._flutter_progress_ref = ft.Ref[ft.ProgressRing]()
         
         self.result_rows = {}
 
@@ -120,38 +68,10 @@ class FactorySidebar(ft.Container):
                 alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             )
         )
-        
-        # Flutter doctor results container
-        flutter_results = ft.Column(ref=self._flutter_results_ref, spacing=5, visible=False)
-        flutter_progress = ft.ProgressRing(ref=self._flutter_progress_ref, visible=False, width=16, height=16)
-        
-        flutter_doctor_section = ft.ExpansionTile(
-            title = ft.Text("Flutter Doctor", font_family="OpenRunde Medium", size=12, color=ft.Colors.BLACK38),
-            show_trailing_icon=False,
-            dense=True,
-            shape = ft.ContinuousRectangleBorder(radius=6),
-            tile_padding=ft.padding.all(5),
-            controls = [
-                ft.Container(
-                    content=ft.Column([
-                        ft.Container(
-                            flutter_results,
-                            padding=ft.padding.only(left=10),
-                        ),
-                        ft.Row([
-                            FactoryButton(ft.Text("Run"), on_click=self.execute_flutter_doctor, expand=True)  
-                        ], expand=True),
-                    ]),
-                    expand=True,
-                    padding=ft.margin.all(5),
-                ),
-            ]
-        )
 
         # Main content area for sidebar items
         content_area = ft.Column(
             controls=[
-                flutter_doctor_section,
                 FactoryTextField(
                     "terminal pipeline",
                     ref=self._flet_build_output_ref,
@@ -204,103 +124,8 @@ class FactorySidebar(ft.Container):
                 spacing=10,
                 expand=True,
             ),
-            padding=ft.padding.only(bottom=10),
+            padding=ft.padding.only(bottom=30),
         )
-    
-    def create_loading_rows(self):
-        """Create initial loading rows for all expected components"""
-        results_container = self._flutter_results_ref.current
-        results_container.controls.clear()
-        self.result_rows.clear()
-        
-        for component in EXPECTED_COMPONENTS:
-            # Create a row with a loading indicator for each expected component
-            self.result_rows[component] = ft.Row([
-                ft.ProgressRing(width=8, height=8, stroke_width=1, color=colors_map["primary"]),
-                ft.Text(f"{component}", size=10, opacity=0.7)
-            ], spacing=5)
-            results_container.controls.append(self.result_rows[component])
-    
-    def update_result_row(self, component, status):
-        """Update a row with the result status"""
-        # Create a color based on status using colors_map
-        color = colors_map["primary"] if status == "PASSED" else \
-                ft.Colors.GREY_300 if status == "FAILED" else \
-                ft.Colors.GREY_300 if status == "WARNING" else \
-                colors_map["text_secondary"]
-                
-        icon = ft.Icon(
-            name=ft.Icons.CHECK_CIRCLE if status == "PASSED" else \
-                ft.Icons.ERROR if status == "FAILED" else \
-                ft.Icons.WARNING if status == "WARNING" else \
-                ft.Icons.INFO,
-            color=color,
-            size=8
-        )
-        
-        # Clean up component name - remove descriptions after dash or in parentheses
-        display_name = component.split('-')[0].split('(')[0].strip()
-
-        matching_component = component
-        if component not in self.result_rows:
-            for expected in self.result_rows.keys():
-                if expected.lower() in component.lower() or component.lower() in expected.lower():
-                    matching_component = expected
-                    break
-        
-        # Replace the row with the updated one
-        if matching_component in self.result_rows:
-            # Update existing row
-            self.result_rows[matching_component].controls = [
-                icon,
-                ft.Text(f"{display_name}", size=10, color=color)
-            ]
-        else:
-            # Create new row for unexpected components
-            new_row = ft.Row([
-                icon,
-                ft.Text(f"{display_name}", size=10, color=color)
-            ], spacing=5)
-            self._flutter_results_ref.current.controls.append(new_row)
-            self.result_rows[component] = new_row
-    
-    async def execute_flutter_doctor(self, e):
-        # Get references to UI elements
-        results_container = self._flutter_results_ref.current
-        progress_button = self._flutter_progress_ref.current
-        
-        # Make results container visible
-        results_container.visible = True
-        
-        # Show progress indicator by changing the icon button to a progress ring
-        progress_button.icon = None
-        progress_button.content = ft.ProgressRing(width=12, height=12, stroke_width=1, color=colors_map["primary"])
-        progress_button.disabled = True
-        self.update()
-        
-        # Create initial loading rows
-        self.create_loading_rows()
-        self.update()
-        
-        # Run flutter doctor and update UI with results
-        async for result in run_flutter_doctor():
-            result_json = json.loads(result)
-            for component, status in result_json.items():
-                self.update_result_row(component, status)
-                self.update()
-        
-        # Check for any remaining components that didn't get updated
-        for component in list(self.result_rows.keys()):
-            row = self.result_rows[component]
-            # If the first control is still a ProgressRing, it means this component wasn't checked
-            if isinstance(row.controls[0], ft.ProgressRing):
-                self.update_result_row(component, "NOT CHECKED")
-        
-        # Restore the refresh icon when done
-        progress_button.content = None
-        progress_button.icon = ft.Icons.REFRESH
-        progress_button.disabled = False
-        self.update()
     
     def did_mount(self):
         """Called when the control is added to the page"""
@@ -310,8 +135,28 @@ class FactorySidebar(ft.Container):
             self.update()
         
     async def execute_build_command(self, e):
-
         """Execute the flet build command and stream output to the terminal"""
+        # try saving the pyproject.toml file
+        if hasattr(self, 'auto_save_manager') and self.auto_save_manager:
+            saved = self.auto_save_manager.save_on_build()
+            if saved:
+                self.page.pubsub.send_all({
+                    "type": "toast",
+                    "message": "Saved pyproject.toml before building",
+                    "toast_type": "success",
+                    "duration": 2,
+                })
+            else:
+                # If save failed and path exists, show error and don't continue
+                project_path = self.auto_save_manager.project_path_getter()
+                if project_path:
+                    self.page.pubsub.send_all({
+                        "type": "toast",
+                        "message": "Failed to save pyproject.toml, build aborted",
+                        "toast_type": "error",
+                        "duration": 3,
+                    })
+
         # Get references to UI elements
         build_button = self._build_button_ref.current
         active_btn_icon = build_button.content.controls[0]

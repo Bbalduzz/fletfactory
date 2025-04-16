@@ -9,6 +9,7 @@ import shlex
 class FormState:
     # Building configuration
     python_app_path: str = ""
+    app_path: str = ""
     output_directory: str = ""
     module_name: str = ""
     arch: str = ""
@@ -81,6 +82,7 @@ class FormState:
     # Selected platform
     selected_platform: Optional[Platform] = None
     verbose_build: bool = False
+    verbose_build_level: int = 1 # 0: none, 1: -v, 2: -vv
     
     # Callback on change
     on_change: Optional[Callable] = None
@@ -108,13 +110,19 @@ class FormState:
                 cmd.append(f"{key}")
             elif isinstance(value, list) and value:
                 for item in value:
-                    cmd.append(f"{key}={shlex.quote(item)}")
+                    cmd.append(f"{key}={shlex.quote(str(item))}")  # Convert item to string before quoting
             elif value:
-                cmd.append(f"{key}={shlex.quote(value)}")
+                cmd.append(f"{key}={shlex.quote(str(value))}")  # Convert value to string before quoting
         
         if self.module_name:
             cmd.append(f"--module={self.module_name}")
-        if self.verbose_build:
+
+        if hasattr(self, 'verbose_build_level'):
+            if self.verbose_build_level == 1:
+                cmd.append("-v")
+            elif self.verbose_build_level == 2:
+                cmd.append("-vv")
+        elif self.verbose_build:  # backward compatibility
             cmd.append("-v")
         
         return cmd

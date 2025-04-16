@@ -1,6 +1,10 @@
 import flet as ft
-from typing import List
+from settings_manager import SettingsManager
+from typing import List, Union
+from time import time, sleep
 from .utils import colors_map, Platform, buildable_platforms, current_os
+import asyncio, re, json
+from .toast import ToastPosition
 
 class FactoryButton(ft.TextButton):
     def __init__(self, content, on_click=None, **kwargs):
@@ -26,7 +30,7 @@ class FactoryButton(ft.TextButton):
             )
         )
 
-class FactorySecondaryButton(ft.IconButton):
+class FactorySecondaryButton(ft.TextButton):
     def __init__(self, content, on_click=None, **kwargs):
         super().__init__(
             content=content,
@@ -119,6 +123,7 @@ class FactoryCheckBox(ft.Checkbox):
                     width=1,
                 ),
             },
+            check_color=colors_map["primary"],
             on_change=self._handle_change,
             **kwargs
         )
@@ -128,6 +133,50 @@ class FactoryCheckBox(ft.Checkbox):
         """Internal handler that ensures the form state is updated"""
         if self._user_on_change:
             self._user_on_change(e)
+
+    @property
+    def result(self):
+        return self.value
+
+class FactoryRadio(ft.Radio):
+    def __init__(
+        self, 
+        value="", 
+        label="", 
+        on_change=None, 
+        label_position=ft.LabelPosition.RIGHT,
+        adaptive=False,
+        autofocus=False,
+        toggleable=False,
+        **kwargs
+    ):
+        self._user_on_change = on_change
+        super().__init__(
+            value=value,
+            label=label,
+            label_position=label_position,
+            adaptive=adaptive,
+            autofocus=autofocus,
+            toggleable=toggleable,
+            label_style=ft.TextStyle(
+                size=12,
+                font_family="OpenRunde Regular",
+                color=colors_map["text_secondary"],
+            ),
+            fill_color={
+                ft.ControlState.DEFAULT: colors_map["primary"],
+                ft.ControlState.DISABLED: colors_map["border_normal"],
+            },
+            hover_color=colors_map["secondary"],
+            focus_color=colors_map["secondary"],
+            overlay_color={
+                ft.ControlState.HOVERED: colors_map["secondary"],
+                ft.ControlState.FOCUSED: colors_map["secondary"],
+            },
+            splash_radius=10.0,
+            visual_density=ft.VisualDensity.STANDARD,
+            **kwargs
+        )
 
     @property
     def result(self):
@@ -490,13 +539,565 @@ class PlatformsRow(ft.Row):
         """Returns the currently selected platform or None if none selected"""
         return self.selected_button.platform if self.selected_button else None
 
+
+class FactorySettingsDialog(ft.AlertDialog):
+    def __init__(self, title="Dialog Title", content=None, actions=None, settings_manager=None):
+        self.settings_manager = settings_manager
+        # Create references for components
+        self.flutter_results_ref = ft.Ref[ft.Column]()
+        self.flet_results_ref = ft.Ref[ft.Column]()
+        
+        self.verbose_v_ref = ft.Ref[FactoryCheckBox]()
+        self.verbose_vv_ref = ft.Ref[FactoryCheckBox]()
+        self.toast_position_ref = ft.Ref[ft.RadioGroup]()
+        self.auto_save_ref = ft.Ref[FactoryCheckBox]()
+
+        title_component = ft.Column(
+            [
+                ft.Text(
+                    title,
+                    size=20,
+                    font_family="OpenRunde Semibold",
+                    color=colors_map["text_secondary"]
+                ),
+                ft.Text(
+                    "Customize your build experience",
+                    size=12,
+                    font_family="OpenRunde Regular",
+                    color="#595b5d",
+                )
+            ],
+            spacing=0,
+        )
+        
+        # Default actions if none provided
+        if actions is None:
+            actions = [
+                FactorySecondaryButton(
+                    ft.Text("Cancel"),
+                    on_click=lambda e: self.on_cancel(e),
+                ),
+                FactoryButton(
+                    ft.Text("Save"),
+                    on_click=lambda e: self.on_save(e),
+                ),
+            ]
+        
+        super().__init__(
+            title=title_component,
+            content=content,
+            actions=actions,
+            actions_alignment=ft.MainAxisAlignment.END,
+            bgcolor="#ffffff",
+            shape=ft.RoundedRectangleBorder(radius=6),
+        )
+        
+        self.flutter_results = ft.Column(
+            ref=self.flutter_results_ref,
+            controls=[
+                ft.Text("Run Flutter Doctor to see results", 
+                       color=colors_map["text_secondary"],
+                       size=12)
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=5,
+        )
+
+        self.flet_results = ft.Column(
+            ref=self.flet_results_ref,
+            controls=[
+                ft.Text("Run Flet Doctor to see results",
+                       color=colors_map["text_secondary"],
+                       size=12)
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            spacing=5,
+        )
+        
+        # Separate dictionaries for Flutter and Flet result rows
+        self.flutter_result_rows = {}
+        self.flet_result_rows = {}
+        
+        # Expected components for Flutter and Flet
+        self.FLUTTER_EXPECTED_COMPONENTS = [
+            "Flutter", "Android toolchain", "Xcode", "Chrome", 
+            "Android Studio", "VS Code", "Connected device"
+        ]
+        
+        self.FLET_EXPECTED_COMPONENTS = [
+            "Flet Version", "Python Version", "Operating System"
+        ]
+
+        self._create_settings_content()
+
+    def on_cancel(self, e):
+        """Cancel button handler - revert to previous settings"""
+        self.open = False
+        self.update()
+
+    def on_save(self, e):
+        """Save button handler - save settings"""
+        # Settings are already saved when changed, so just close the dialog
+        self.open = False
+        self.update()
+    
+    def _toggle_verbose_build(self, e):
+        """Handle verbose build checkbox changes"""
+        # Determine which checkbox was changed
+        if e.control == self.verbose_v_ref.current:
+            if e.control.value:
+                # If -v is checked, uncheck -vv
+                self.verbose_vv_ref.current.value = False
+                self.verbose_vv_ref.current.update()
+                # Set verbose level to 1
+                self.settings_manager.set("verbose_build", 1)
+            else:
+                # If -v is unchecked, set verbose level to 0
+                self.settings_manager.set("verbose_build", 0)
+        elif e.control == self.verbose_vv_ref.current:
+            if e.control.value:
+                # If -vv is checked, uncheck -v
+                self.verbose_v_ref.current.value = False
+                self.verbose_v_ref.current.update()
+                # Set verbose level to 2
+                self.settings_manager.set("verbose_build", 2)
+            else:
+                # If -vv is unchecked, set verbose level to 0
+                self.settings_manager.set("verbose_build", 0)
+    
+    def _on_toast_position_change(self, e):
+        """Handle toast position radio changes"""
+        self.settings_manager.set("toast_position", e.control.value)
+
+    def _on_auto_save_change(self, e):
+        """Handle auto save checkbox changes"""
+        self.settings_manager.set("auto_save", e.control.value)
+
+    def _create_settings_content(self):
+        """Create the settings dialog content with controls"""
+        # Get current settings
+        verbose_level = self.settings_manager.get("verbose_build", 1)
+        toast_position = self.settings_manager.get("toast_position", "BOTTOM_RIGHT")
+        
+        # Create verbose build checkboxes
+        verbose_v_checkbox = FactoryCheckBox(
+            ref=self.verbose_v_ref,
+            value=verbose_level == 1,
+            label="Show detailed build output (-v)",
+            on_change=self._toggle_verbose_build
+        )
+        
+        verbose_vv_checkbox = FactoryCheckBox(
+            ref=self.verbose_vv_ref,
+            value=verbose_level == 2,
+            label="Show very detailed build output (-vv)",
+            on_change=self._toggle_verbose_build
+        )
+        
+        # Create toast position radio group
+        toast_radio_group = ft.RadioGroup(
+            ref=self.toast_position_ref,
+            value=toast_position,
+            on_change=self._on_toast_position_change,
+            content=ft.Row(
+                [
+                    FactoryRadio(
+                        value=position.value,
+                        label=position.name.replace("_", " ").title(),
+                    )
+                    for position in ToastPosition
+                ]
+            )
+        )
+
+        autosave_checkbox = FactoryCheckBox(
+            ref=self.auto_save_ref,
+            value=self.settings_manager.get("auto_save", False),
+            label="Automatically save changes to pyproject.toml",
+            on_change=self._on_auto_save_change
+        )
+        
+        # Flutter results
+        
+        # Create the content
+        self.content = ft.Container(
+            ft.Column(
+                controls=[
+                    ft.Text("Global settings", font_family="OpenRunde Regular", size=12, color="#595b5d"),
+                    SettingsItemExpander(
+                        header=ft.Text("Verbose Build", font_family="OpenRunde Regular", color=colors_map["text_secondary"]),
+                        content=ft.Column([
+                            ft.Row([verbose_v_checkbox]),
+                            ft.Row([verbose_vv_checkbox]),
+                        ])
+                    ),
+                    SettingsItemExpander(
+                        header=ft.Text("Toasts Positions", font_family="OpenRunde Regular", color=colors_map["text_secondary"]),
+                        content=toast_radio_group
+                    ),
+                    SettingsItemExpander(
+                        header=ft.Text("Auto Save", font_family="OpenRunde Regular", color=colors_map["text_secondary"]),
+                        content=autosave_checkbox
+                    ),
+                    ft.Text("Run checks", font_family="OpenRunde Regular", size=12, color="#595b5d"),
+                    SettingsItemExpander(
+                        "Run Flutter Doctor",
+                        content=ft.Column(
+                            [
+                                ft.Row(
+                                    controls=[
+                                        ft.Text("❯ flutter doctor", font_family="FiraCode Retina", size=12, color=colors_map["text_secondary"]),
+                                        FactoryButton(
+                                            ft.Text("Run"),
+                                            on_click=self.execute_flutter_doctor,
+                                        )  
+                                    ],
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                ),
+                                self.flutter_results,
+                            ],
+                            spacing=5
+                        ),
+                    ),
+                    SettingsItemExpander(
+                        "Run Flet Doctor",
+                        content=ft.Column(
+                            [
+                                ft.Row(
+                                    controls=[
+                                        ft.Text("❯ flet doctor", font_family="FiraCode Retina", size=12, color=colors_map["text_secondary"]),
+                                        FactoryButton(
+                                            ft.Text("Run"),
+                                            on_click=self.execute_flet_doctor,
+                                        )  
+                                    ],
+                                    alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                ),
+                                self.flet_results,
+                            ],
+                            spacing=5
+                        ),
+                    ),
+                ],
+                spacing=10,
+                scroll=ft.ScrollMode.AUTO,
+            ),
+            margin=ft.margin.symmetric(vertical=10),
+            expand=False,
+            height=400
+        )
+    
+    def create_loading_rows(self, doctor_type="flutter"):
+        """Create initial loading rows for all expected components"""
+        if doctor_type == "flutter":
+            self.flutter_results_ref.current.controls.clear()
+            self.flutter_result_rows.clear()
+            expected_components = self.FLUTTER_EXPECTED_COMPONENTS
+            result_rows = self.flutter_result_rows
+            result_column = self.flutter_results_ref.current
+        else:  # flet
+            self.flet_results_ref.current.controls.clear()
+            self.flet_result_rows.clear()
+            expected_components = self.FLET_EXPECTED_COMPONENTS
+            result_rows = self.flet_result_rows
+            result_column = self.flet_results_ref.current
+        
+        for component in expected_components:
+            # A row with a loading indicator for each expected component
+            result_rows[component] = ft.Row([
+                ft.ProgressRing(width=8, height=8, stroke_width=1, color=colors_map["primary"]),
+                ft.Text(f"{component}", size=10, opacity=0.7)
+            ], spacing=5)
+            result_column.controls.append(result_rows[component])
+    
+    def update_result_row(self, component, status, doctor_type="flutter", version_info=""):
+        """Update a row with the result status"""
+        color = colors_map["primary"] if status == "PASSED" else \
+                ft.Colors.AMBER if status == "WARNING" else \
+                ft.Colors.RED if status == "FAILED" else \
+                colors_map["text_secondary"]
+                
+        icon = ft.Icon(
+            name=ft.Icons.CHECK_CIRCLE if status == "PASSED" else \
+                ft.Icons.ERROR if status == "FAILED" else \
+                ft.Icons.WARNING if status == "WARNING" else \
+                ft.Icons.INFO,
+            color=color,
+            size=12
+        )
+        
+        # Clean up component name - remove descriptions after dash or in parentheses
+        display_name = component.split('-')[0].split('(')[0].strip()
+
+        # Select the appropriate result rows and column
+        if doctor_type == "flutter":
+            result_rows = self.flutter_result_rows
+            result_column = self.flutter_results_ref.current
+        else:  # flet
+            result_rows = self.flet_result_rows
+            result_column = self.flet_results_ref.current
+        
+        # Find a matching component
+        matching_component = component
+        if component not in result_rows:
+            for expected in result_rows.keys():
+                if expected.lower() in component.lower() or component.lower() in expected.lower():
+                    matching_component = expected
+                    break
+        
+        # Create or update row with the status
+        if matching_component in result_rows:
+            result_rows[matching_component].controls = [
+                icon,
+                ft.Text(
+                    f"{display_name}: {version_info}" if version_info else f"{display_name}", 
+                    size=10, 
+                    color=color
+                )
+            ]
+        else:
+            # New row for unexpected components
+            new_row = ft.Row([
+                icon,
+                ft.Text(
+                    f"{display_name}: {version_info}" if version_info else f"{display_name}", 
+                    size=10, 
+                    color=color
+                )
+            ], spacing=5)
+            result_column.controls.append(new_row)
+            result_rows[component] = new_row
+        
+    async def execute_flutter_doctor(self, e):
+        """Run flutter doctor and display results"""
+        self.create_loading_rows("flutter")
+        self.update()
+        
+        # Run flutter doctor and update UI with results
+        async for result_json in run_flutter_doctor():
+            try:
+                result = json.loads(result_json)
+                # Update component statuses
+                for component, status in result.items():
+                    self.update_result_row(component, status, "flutter")
+                    self.update()
+            except json.JSONDecodeError:
+                print(f"Failed to decode JSON: {result_json}")
+        
+        # Check for any remaining components that didn't get updated
+        for component in list(self.flutter_result_rows.keys()):
+            row = self.flutter_result_rows[component]
+            # If the first control is still a ProgressRing, it means this component wasn't checked
+            if isinstance(row.controls[0], ft.ProgressRing):
+                self.update_result_row(component, "NOT CHECKED", "flutter")
+                
+        self.update()
+    
+    async def execute_flet_doctor(self, e):
+        """Run flet doctor and display results"""
+        self.create_loading_rows("flet")
+        self.update()
+        
+        # Run flet doctor and update UI with results
+        async for result_json in run_flet_doctor():
+            try:
+                result = json.loads(result_json)
+                # Update component statuses
+                for component, status in result.items():
+                    if component != "version_info":  # Skip the version_info key
+                        version_info = result.get("version_info", "")
+                        self.update_result_row(component, status, "flet", version_info)
+                        self.update()
+            except json.JSONDecodeError:
+                print(f"Failed to decode JSON: {result_json}")
+        
+        # Check for any remaining components that didn't get updated
+        for component in list(self.flet_result_rows.keys()):
+            row = self.flet_result_rows[component]
+            # If the first control is still a ProgressRing, it means this component wasn't checked
+            if isinstance(row.controls[0], ft.ProgressRing):
+                self.update_result_row(component, "NOT CHECKED", "flet")
+                
+        self.update()
+
+class SettingsItemExpander(ft.Container):
+    def __init__(
+        self,
+        header: Union[str, ft.Control],
+        content: ft.Control,
+        expand: bool = False,
+        width: int = 600,
+        **kwargs,
+    ):
+        # Custom theme colors
+        self.bg_color = "#ffffff"
+        self.border_color = "#eceef1"
+        self.text_color = "#000000"
+        self.corner_radius = 8
+
+        self._expanded = expand
+        self._width = width
+        self._header = (
+            header
+            if isinstance(header, ft.Control)
+            else ft.Text(
+                header,
+                size=14,
+                font_family="OpenRunde Regular",
+                color=self.text_color,
+            )
+        )
+        self._content = content
+        # Create expand icon
+        self._expand_icon = ft.IconButton(
+            icon=ft.Icons.EXPAND_LESS if expand else ft.Icons.EXPAND_MORE,
+            icon_size=12,
+            icon_color=self.text_color,
+            on_click=self._toggle
+        )
+
+        # Calculate the content height
+        self._content_height = content.height if hasattr(content, "height") else None
+
+        self._content_container = ft.Container(
+            content=self._content,
+            bgcolor=self.bg_color,
+            border=ft.border.all(1, self.border_color),
+            border_radius=ft.border_radius.only(
+                bottom_left=self.corner_radius,
+                bottom_right=self.corner_radius,
+            ),
+            padding=15,
+            width=self._width,
+            height=None if self._expanded else 0,
+            animate=ft.animation.Animation(
+                duration=300,
+                curve=ft.AnimationCurve.EASE_OUT,
+            ),
+            clip_behavior=ft.ClipBehavior.HARD_EDGE,
+        )
+
+        header_row = ft.Container(
+            content=ft.Row(
+                controls=[
+                    self._header,
+                    self._expand_icon,
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+            height=50,
+            on_click=self._toggle,
+            border_radius=ft.border_radius.only(
+                top_left=self.corner_radius,
+                top_right=self.corner_radius,
+                bottom_left=self.corner_radius if not self._expanded else 0,
+                bottom_right=self.corner_radius if not self._expanded else 0,
+            ),
+            padding=10,
+            bgcolor=self.bg_color,
+            border=ft.border.all(1, self.border_color),
+            width=self._width,
+            animate=ft.animation.Animation(
+                duration=300,
+                curve=ft.AnimationCurve.EASE_OUT,
+            ),
+        )
+
+        self._header_row = header_row
+
+        super().__init__(
+            content=ft.Column(
+                controls=[
+                    header_row,
+                    self._content_container,
+                ],
+                spacing=0,
+                expand=True,
+            ),
+            expand=True,
+            **kwargs,
+        )
+
+    def update_theme(self, bg_color=None, border_color=None, text_color=None):
+        """Update expander theme colors"""
+        # Update colors if provided
+        if bg_color:
+            self.bg_color = bg_color
+        if border_color:
+            self.border_color = border_color
+        if text_color:
+            self.text_color = text_color
+
+        # Update header colors
+        if isinstance(self._header, ft.Text):
+            self._header.color = self.text_color
+
+        # Update expand icon
+        self._expand_icon.icon_color = self.text_color
+
+        # Update container colors
+        self._content_container.bgcolor = self.bg_color
+        self._content_container.border = ft.border.all(1, self.border_color)
+        self._header_row.bgcolor = self.bg_color
+        self._header_row.border = ft.border.all(1, self.border_color)
+
+        self.update()
+
+    def _toggle(self, *_):
+        self._expanded = not self._expanded
+
+        if self._expanded:
+            self._content_container.height = None
+        else:
+            self._content_container.height = 0
+
+        self._expand_icon.icon = ft.Icons.EXPAND_LESS if self._expanded else ft.Icons.EXPAND_MORE
+
+        self._header_row.border_radius = ft.border_radius.only(
+            top_left=self.corner_radius,
+            top_right=self.corner_radius,
+            bottom_left=self.corner_radius if not self._expanded else 0,
+            bottom_right=self.corner_radius if not self._expanded else 0,
+        )
+
+        self.update()
+
+    @property
+    def expanded(self) -> bool:
+        return self._expanded
+
+    @expanded.setter
+    def expanded(self, value: bool):
+        if self._expanded != value:
+            self._expanded = value
+
+            # Update content container height
+            self._content_container.height = self._content_height if value else 0
+
+            # Update the expand icon
+            self._expand_icon.icon = ft.Icons.EXPAND_LESS if value else ft.Icons.EXPAND_MORE
+
+            # Update header border radius
+            self._header_row.border_radius = ft.border_radius.only(
+                top_left=self.corner_radius,
+                top_right=self.corner_radius,
+                bottom_left=self.corner_radius if not value else 0,
+                bottom_right=self.corner_radius if not value else 0,
+            )
+
+            self.update()
+
 ## title section
 class FactoryHeader(ft.Row):
-    def __init__(self):
+    def __init__(self, settings_manager: SettingsManager):
         super().__init__(
             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
             spacing=10
         )
+        self.settings_manager = settings_manager
+
+        self._settings_dialog = FactorySettingsDialog(title="Settings", settings_manager=self.settings_manager)
+
         self.controls = [
             ft.Row(
                 alignment=ft.CrossAxisAlignment.BASELINE,
@@ -518,5 +1119,106 @@ class FactoryHeader(ft.Row):
                 ),
                 width=35,
                 height=35,
+                # on_click=self.open_settings_dialog,
             )
         ]
+
+    def did_mount(self):
+        self.controls[1].on_click = self.open_settings_dialog
+    
+    def open_settings_dialog(self, e):
+        """Open the settings dialog when the button is clicked"""
+        print("Opening settings dialog")
+        self.page.open(self._settings_dialog)
+
+    async def _execute_flutter_doctor(self, e):
+        """Wrapper to call the dialog's execute_flutter_doctor method"""
+        await self._settings_dialog.execute_flutter_doctor(e)
+
+    async def _execute_flet_doctor(self, e):
+        """Wrapper to call the dialog's execute_flet_doctor method"""
+        await self._settings_dialog.execute_flet_doctor(e)
+
+
+# Flutter doctor components that are typically checked
+async def run_flutter_doctor():
+    # env = os_environ.copy()
+
+    process = await asyncio.create_subprocess_exec(
+        'flutter', 'doctor', '-v',
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        # env=env
+    )
+
+    # match check results
+    check_pattern = re.compile(r'^\[(.)?\]\s*(.*?)(?:\s*\(.*\))?$')
+    detected_components = set()
+    
+    while True:
+        line_bytes = await process.stdout.readline()
+        if not line_bytes:
+            break
+            
+        line = line_bytes.decode('utf-8')
+        if not line.strip():
+            continue
+            
+        # check if this is a section header line
+        match = check_pattern.match(line.strip())
+        if match:
+            status_symbol, description = match.groups()
+            # determine status based on symbol
+            status = "PASSED" if status_symbol == "✓" else "FAILED" if status_symbol == "✗" else "WARNING" if status_symbol == "!" else "UNKNOWN"
+            component_name = description.strip()
+            detected_components.add(component_name)
+            result = {component_name: status}
+            yield json.dumps(result)
+    
+    await process.wait() # wait for process to complete
+    
+    if process.returncode != 0:
+        yield json.dumps({"Error": f"Flutter doctor exited with code {process.returncode}"})
+
+async def run_flet_doctor():
+    """Run flet doctor command and yield results line by line"""
+    process = await asyncio.create_subprocess_shell(
+        "flet doctor",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE
+    )
+    
+    # Read all output at once
+    stdout_data, stderr_data = await process.communicate()
+    
+    if stdout_data:
+        # Get the full output as a string
+        full_output = stdout_data.decode().strip()
+        
+        # Extract the main components using regex
+        flet_version_match = re.search(r'✔\s+Flet\s+Version:\s+(.*?)(?:\n|$)', full_output)
+        python_version_match = re.search(r'✔\s+Python\s+Version:\s+(.*?)(?:\n✔|$)', full_output, re.DOTALL)
+        os_version_match = re.search(r'✔\s+Operating\s+System:\s+(.*?)(?:\n|$)', full_output, re.DOTALL)
+        
+        # Yield the extracted information with PASSED status to match Flutter Doctor format
+        if flet_version_match:
+            result = {"Flet Version": "PASSED"}
+            result["version_info"] = flet_version_match.group(1).strip()
+            yield json.dumps(result)
+        
+        if python_version_match:
+            # Clean up any line breaks in the Python version
+            python_version = python_version_match.group(1).replace('\n', ' ').strip()
+            result = {"Python Version": "PASSED"}
+            result["version_info"] = python_version
+            yield json.dumps(result)
+        
+        if os_version_match:
+            # Clean up any line breaks in the OS version
+            os_version = os_version_match.group(1).replace('\n', ' ').strip()
+            result = {"Operating System": "PASSED"}
+            result["version_info"] = os_version
+            yield json.dumps(result)
+    
+    # Wait for the process to complete
+    await process.wait()
