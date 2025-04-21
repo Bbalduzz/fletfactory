@@ -2,24 +2,24 @@ import flet as ft
 from os import environ
 import shlex
 
-from components.utils import Platform
-from components.waterfall_layout import WaterfallView
-from components.widgets import FactoryHeader, PlatformsRow
-from components.form import FormState
-from components.toast import Toaster, ToastType, ToastPosition
-from views.sidebar import FactorySidebar
-from settings_manager import SettingsManager
+from utils.utils import Platform
+from ui.layouts.waterfall_layout import WaterfallView
+from ui.components.widgets import FactoryHeader, PlatformsRow, IconsManager
+from ui.components.form import FormState
+from ui.components.toast import Toaster, ToastType, ToastPosition
+from ui.views.sidebar import FactorySidebar
+from config.settings_manager import SettingsManager
 
-from field_registry import FieldRegistry
-from card_factory import CardFactory
-from field_definitions import (
+from ui.views.card_factory import CardFactory
+from core.field_registry import FieldRegistry
+from core.field_definitions import (
     get_building_fields, get_app_info_fields, get_versioning_fields,
     get_appearance_fields, get_package_options_fields, get_web_specific_fields,
     get_ios_specific_fields, get_android_specific_fields, get_macos_specific_fields,
     get_permissions_fields
 )
-from pyproject_service import PyProjectService
-from pyproject_autosave import AutoSaveManager
+from core.pyproject_service import PyProjectService
+from config.pyproject_autosave import AutoSaveManager
 
 environ["FLET_CLI_NO_RICH_OUTPUT"] = "1"
 
@@ -48,9 +48,6 @@ def main(page: ft.Page):
     
     settings_manager = SettingsManager()
     settings_manager.set_page(page)
-    
-    position_str = settings_manager.get("toast_position", "bottom-right")
-    toaster = Toaster(page, position=position_str, theme="light")
     
     form_state = FormState()
     field_registry = FieldRegistry(form_state)
@@ -92,8 +89,15 @@ def main(page: ft.Page):
             return python_app_path_ref.current.value
         return None
 
+    icons_manager = IconsManager(get_project_path)
     auto_save_manager = AutoSaveManager(form_state, get_project_path, settings_manager)
+    toaster = Toaster(page, position=settings_manager.get("toast_position", "bottom-right"), theme="light")
     
+    for field_name in ["icon", "icon_ios", "icon_android", "icon_web", "icon_macos", "icon_windows"]:
+        ref = field_registry.get_ref(field_name)
+        if ref and ref.current:
+            icons_manager.register_icon_picker(field_name, ref.current)
+
     def update_toast_position(position_value):
         if toaster:
             toaster.position = position_value.lower()
@@ -112,23 +116,23 @@ def main(page: ft.Page):
                 duration=message.get("duration", 3),
                 toast_id=message.get("toast_id", None)
             )
+
         elif message.get("type") == "remove_toast":
             toast_id = message.get("toast_id")
             if toast_id:
                 toaster.remove_toast_by_id(toast_id)
+
         elif message.get("type") == "settings_changed":
             key = message.get("key")
             value = message.get("value")
-            
-            handlers = {
-                "toast_position": update_toast_position,
-                "verbose_build": update_verbose_build_ui,
-            }
-            if handler := handlers.get(key):
-                handler(value)
 
-            if key == "auto_save":
-                auto_save_manager.update_from_settings()
+            match key:
+                case "toast_position":
+                    update_toast_position(value)
+                case "verbose_build":
+                    update_verbose_build_ui(value)
+                case "auto_save":
+                    auto_save_manager.update_from_settings()
                 
             page.update()
     
@@ -216,7 +220,11 @@ def main(page: ft.Page):
     page.add(
         ft.Row(
             controls=[
-                FactorySidebar(command_ref=command_display_ref, auto_save_manager=auto_save_manager),
+                FactorySidebar(
+                    command_ref=command_display_ref,
+                    auto_save_manager=auto_save_manager,
+                    icons_manager=icons_manager,  # Add this
+                ),
                 main_content,
             ],
             spacing=0,

@@ -2,7 +2,7 @@ import toml
 from pathlib import Path
 from os import path
 from typing import Any, Dict, Optional, List
-from components.form import FormState
+from ui.components.form import FormState
 
 class PyProjectWriter:
     """Service for updating pyproject.toml files based on form state following Flet documentation structure"""
@@ -78,6 +78,20 @@ class PyProjectWriter:
         
         if form_state.arch:
             flet_data["arch"] = str(form_state.arch)
+
+        if form_state.include_optional_controls and len(form_state.include_optional_controls) > 0:
+            PyProjectWriter._ensure_section(flet_data, "flutter")
+            
+            # https://flet.dev/docs/publish/#including-optional-controls
+            # here we the simple list format if no version or path information
+            # this converts ['flet_video', 'flet_audio'] to:
+            # flutter.dependencies = ["flet_video", "flet_audio"]
+            dependencies = [str(ctrl) for ctrl in form_state.include_optional_controls]
+            flet_data["flutter"]["dependencies"] = dependencies
+            
+            # If I want to support the more complex format with versions,
+            # I would need to parse the input strings to extract version info
+            # and use a different structure (dunno)
         
         # App section - only create if needed
         if form_state.module_name or (form_state.exclude_additional_files and len(form_state.exclude_additional_files) > 0):

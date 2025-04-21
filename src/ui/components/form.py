@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Callable
 from os.path import expanduser
-from .utils import Platform
+from utils.utils import Platform
 import shlex
 
 
@@ -29,11 +29,13 @@ class FormState:
     # Appearance
     splash_screen_color: str = ""
     splash_screen_dark_color: str = ""
+    app_icon: str = ""
     disable_web_splash_screen: bool = False
     disable_ios_splash_screen: bool = False
     disable_android_splash_screen: bool = False
     
     # Package options
+    include_optional_controls: List[str] = field(default_factory=list)
     exclude_additional_files: List[str] = field(default_factory=list)
     compile_app_py_files: bool = False
     compile_site_packages_py_files: bool = False
@@ -189,6 +191,11 @@ class FormState:
             
             # Flutter build arguments
             "--flutter-build-args": self.flutter_args,
+
+            # Optional flutter controls
+            # this doesnt seems to be a valid command:
+            # flet: error: unrecognized arguments: --include-packages=flet_video
+            "--include-packages": self.include_optional_controls if hasattr(self, 'include_optional_controls') else None,
             
             # Permissions
             "--permissions": [p for p, enabled in {

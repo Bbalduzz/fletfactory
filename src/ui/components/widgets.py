@@ -1,9 +1,9 @@
 import flet as ft
-from settings_manager import SettingsManager
-from typing import List, Union
+from config.settings_manager import SettingsManager
+from typing import List, Union, Callable, Optional
 from time import time, sleep
-from .utils import colors_map, Platform, buildable_platforms, current_os
-import asyncio, re, json
+from utils.utils import colors_map, Platform, buildable_platforms, current_os
+import asyncio, re, json, shutil, os
 from .toast import ToastPosition
 
 class FactoryButton(ft.TextButton):
@@ -539,7 +539,165 @@ class PlatformsRow(ft.Row):
         """Returns the currently selected platform or None if none selected"""
         return self.selected_button.platform if self.selected_button else None
 
+# MARK: Icon selector
+class IconPicker(ft.Container):
+    def __init__(
+        self,
+        hint_text: str = "Select icon file...",
+        on_change: Optional[Callable] = None,
+        ref: Optional[ft.Ref] = None
+    ):
+        super().__init__()
+        self.hint_text = hint_text
+        self.on_change = on_change
+        self._value = ""
+        self.ref = ref
+        self.content = self._build_content()
+        self.padding = 0
+        self.margin = 0
+        
+    def _build_content(self):
+        self.text_field = FactoryTextField(
+            hint_text=self.hint_text,
+            read_only=False,
+            expand=True,
+        )
+        
+        self.browse_button = FactoryButton(
+            content=ft.Icon(ft.Icons.FOLDER_OPEN, size=12, color=ft.Colors.WHITE),
+            height=40,
+            width=40,
+            on_click=self._pick_file
+        )
+        
+        self.preview = ft.Container(
+            content=ft.Image(
+                src="/api/placeholder/48/48",
+                width=33,
+                height=33,
+                fit=ft.ImageFit.CONTAIN,
+                border_radius=6,
+            ),
+            visible=False,
+            padding=2,
+            border=ft.border.all(1, "#e2e8f0"),
+            border_radius=6,
+        )
+        
+        return ft.Row(
+            controls=[
+                self.preview,
+                self.text_field,
+                self.browse_button,
+            ],
+            spacing=8,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+    
+    def _pick_file(self, e):
+        def on_dialog_result(e: ft.FilePickerResultEvent):
+            if e.files and len(e.files) > 0:
+                selected_file = e.files[0].path
+                self.value = selected_file
+                if self.on_change:
+                    self.on_change(e)
+                
+        file_picker = ft.FilePicker(on_result=on_dialog_result)
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        # Only allow image files
+        file_picker.pick_files(
+            dialog_title=f"Select app icon file",
+            allowed_extensions=["png", "jpg", "jpeg", "webp", "bmp", "gif"],
+            allow_multiple=False,
+        )
+    
+    @property
+    def value(self):
+        return self._value
+    
+    @value.setter
+    def value(self, value):
+        if value != self._value:
+            self._value = value
+            self.text_field.value = value
+            
+            if value:
+                # Update preview
+                self.preview.visible = True
+                self.preview.content.src = value
+            else:
+                self.preview.visible = False
+            
+            self.update()
+    
+    def copy_to_assets(self, project_path, create_assets=True):
+        """
+        Copy the selected icon to the assets directory with all the required filenames
+        
+        Args:
+            project_path: Path to the project directory
+            create_assets: Whether to create the assets directory if it doesn't exist
+            
+        Returns:
+            List of paths to the copied files or None if no file was copied
+        """
+        if not self.value:
+            return None
+            
+        assets_dir = Path(project_path) / "assets"
+        if not assets_dir.exists():
+            if create_assets:
+                assets_dir.mkdir(parents=True, exist_ok=True)
+            else:
+                return None
+        
+        # Get file extension
+        source_path = Path(self.value)
+        if not source_path.exists():
+            return None
+            
+        ext = source_path.suffix.lower()
+        
+        # All icon types to create
+        icon_types = ["icon", "icon_ios", "icon_android", "icon_web", "icon_macos", "icon_windows"]
+        
+        copied_files = []
+        
+        # Copy the file with each icon type name
+        for icon_type in icon_types:
+            dest_filename = f"{icon_type}{ext}"
+            dest_path = assets_dir / dest_filename
+            
+            # Copy the file
+            shutil.copy2(source_path, dest_path)
+            copied_files.append(str(dest_path))
+        
+        return copied_files
 
+
+class IconsManager:
+    """
+    Manages icon selection and copying to the assets directory
+    """
+    def __init__(self, project_path_getter):
+        self.project_path_getter = project_path_getter
+        self.icon_picker = None
+    
+    def set_icon_picker(self, picker):
+        """Set the icon picker component"""
+        self.icon_picker = picker
+    
+    def copy_icons_to_assets(self):
+        """Copy icon to the assets directory with all needed filenames"""
+        project_path = self.project_path_getter()
+        if not project_path or not self.icon_picker:
+            return False
+            
+        copied_files = self.icon_picker.copy_to_assets(project_path, create_assets=True)
+        return copied_files
+
+# MARK: Settings
 class FactorySettingsDialog(ft.AlertDialog):
     def __init__(self, title="Dialog Title", content=None, actions=None, settings_manager=None):
         self.settings_manager = settings_manager

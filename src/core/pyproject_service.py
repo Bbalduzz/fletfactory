@@ -2,8 +2,8 @@ from pathlib import Path
 from os import path
 from typing import Any, Callable, Dict, Optional, Union
 from flet_cli.utils.pyproject_toml import load_pyproject_toml
-from components.form import FormState
-from field_registry import FieldRegistry
+from ui.components.form import FormState
+from core.field_registry import FieldRegistry
 
 class PyProjectService:
     @staticmethod

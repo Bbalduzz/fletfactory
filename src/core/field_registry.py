@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 import flet as ft
-from components.form import FormState
-from components.widgets import (
+from ui.components.form import FormState
+from ui.components.widgets import (
     FactoryTextField, FactoryDropdown, FactoryCheckBox, FactoryBadgeInput,
-    FactoryDropdownOption, FactoryField
+    FactoryDropdownOption, FactoryField, IconPicker
 )
 
 @dataclass
@@ -51,8 +51,14 @@ class FieldRegistry:
             raise ValueError(f"Field {field_name} not registered")
             
         ref = self.field_refs.get(field_name)
-        
-        if field_def.widget_type == "text":
+
+        if field_def.widget_type == "icon":
+            return IconPicker(
+                hint_text=field_def.hint_text,
+                ref=ref,
+                on_change=lambda e: self.form_state.update(field_def.property_name, e.control.value)
+            )
+        elif field_def.widget_type == "text":
             return FactoryTextField(
                 hint_text=field_def.hint_widget or field_def.hint_text,
                 ref=ref,

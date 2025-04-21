@@ -1,4 +1,4 @@
-from field_registry import FieldDefinition
+from .field_registry import FieldDefinition
 
 def get_building_fields():
     return [
@@ -152,11 +152,26 @@ def get_appearance_fields():
             property_name="disable_android_splash_screen",
             title="Disable Android splash screen",
             widget_type="checkbox"
-        )
+        ),
+        FieldDefinition(
+            name="app_icon",
+            property_name="app_icon",
+            title="App Icon",
+            hint_text="Icon for all platforms (png, jpg, webp)",
+            widget_type="icon"
+        ),
     ]
 
 def get_package_options_fields():
     return [
+        FieldDefinition(
+            name="include_controls",
+            property_name="include_optional_controls",
+            title="Include Optional Controls",
+            hint_text="Add Flutter packages with optional Flet controls",
+            hint_widget="e.g. flet_video",
+            widget_type="badges"
+        ),
         FieldDefinition(
             name="exclude_files",
             property_name="exclude_additional_files",

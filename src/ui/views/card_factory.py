@@ -1,6 +1,6 @@
 from typing import List, Dict
-from components.widgets import FactoryCard
-from field_registry import FieldRegistry
+from ui.components.widgets import FactoryCard
+from core.field_registry import FieldRegistry
 
 class CardFactory:
     @staticmethod

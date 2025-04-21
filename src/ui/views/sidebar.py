@@ -1,16 +1,16 @@
 import flet as ft
 import flet_cli.utils.processes as processes
-from components.widgets import *
 import subprocess
 import re
 import json
 import asyncio
 import shlex
 from os import environ as os_environ
-from settings_manager import SettingsManager
+from ui.components.widgets import *
+from config.settings_manager import SettingsManager
 
 class FactorySidebar(ft.Container):
-    def __init__(self, version="v0.0.1", command_ref=None, auto_save_manager=None):
+    def __init__(self, version="v0.0.1", command_ref=None, auto_save_manager=None, icons_manager=None):
         super().__init__()
         self.version = version
 
@@ -21,6 +21,8 @@ class FactorySidebar(ft.Container):
         self.padding = 10
         
         self._flet_command_ref = command_ref
+        self.auto_save_manager = auto_save_manager
+        self.icons_manager = icons_manager
         self._flet_build_output_ref = ft.Ref[ft.TextField]()
         self._build_button_ref = ft.Ref[FactoryButton]()
         
@@ -135,27 +137,40 @@ class FactorySidebar(ft.Container):
             self.update()
         
     async def execute_build_command(self, e):
-        """Execute the flet build command and stream output to the terminal"""
-        # try saving the pyproject.toml file
-        if hasattr(self, 'auto_save_manager') and self.auto_save_manager:
+        """Handle build button click"""
+        if not self._flet_command_ref.current or not self._flet_command_ref.current.value:
+            # No command to execute
+            self.page.pubsub.send_all({
+                "type": "toast",
+                "message": "No build command to execute",
+                "toast_type": "error",
+                "duration": 10,
+            })
+            return
+        
+        # First, save the pyproject.toml file if an auto_save_manager is provided
+        saved = True
+        if self.auto_save_manager:
             saved = self.auto_save_manager.save_on_build()
             if saved:
                 self.page.pubsub.send_all({
                     "type": "toast",
                     "message": "Saved pyproject.toml before building",
                     "toast_type": "success",
-                    "duration": 2,
+                    "duration": 10,
                 })
-            else:
-                # If save failed and path exists, show error and don't continue
-                project_path = self.auto_save_manager.project_path_getter()
-                if project_path:
-                    self.page.pubsub.send_all({
-                        "type": "toast",
-                        "message": "Failed to save pyproject.toml, build aborted",
-                        "toast_type": "error",
-                        "duration": 3,
-                    })
+        
+        # Copy icons to assets directory if icons_manager is provided
+        if self.icons_manager:
+            copied_files = self.icons_manager.copy_icons_to_assets()
+            if copied_files:
+                # Show toast with copied files
+                self.page.pubsub.send_all({
+                    "type": "toast",
+                    "message": f"Copied {len(copied_files)} icon files to assets directory",
+                    "toast_type": "success",
+                    "duration": 10,
+                })
 
         # Get references to UI elements
         build_button = self._build_button_ref.current

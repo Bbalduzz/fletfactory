@@ -1,5 +1,5 @@
-from pyproject_writer import PyProjectWriter
-from components.form import FormState
+from core.pyproject_writer import PyProjectWriter
+from ui.components.form import FormState
 import threading
 import time
 
