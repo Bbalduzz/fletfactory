@@ -9,5 +9,5 @@
 </p>
 
 <div align="center">
-      <image width="80%" align="center" src="https://github.com/user-attachments/assets/2280ae8b-4256-4df4-a7d2-48c937c17d21" alt="demo">
+      <image width="100%" align="center" src="https://github.com/user-attachments/assets/2c113de3-bd8d-4beb-ad58-2bb6655c5bb8" alt="demo">
 </div>
