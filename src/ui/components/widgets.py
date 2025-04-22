@@ -214,7 +214,6 @@ class FactoryDropdown(ft.Dropdown):
     def result(self):
         return self.value
 
-
 class FactoryField(ft.Container):
     def __init__(self, title, hint_text, widget, **kwargs):
         super().__init__(**kwargs)
@@ -696,6 +695,171 @@ class IconsManager:
             
         copied_files = self.icon_picker.copy_to_assets(project_path, create_assets=True)
         return copied_files
+
+# MARK: Template
+class MultipleFactoryTextField(ft.Container):
+    def __init__(self, titles: list[str], descriptions: list[str], hint_texts: list[str], on_change: Optional[Callable] = None, ref: Optional[ft.Ref] = None):
+        super().__init__()
+        self.bgcolor = "#ffffff"
+        self.border = ft.border.all(1, colors_map["border_normal"])
+        self.border_radius = 6
+        self.padding = 10
+        self.margin = 0
+        self.on_change = on_change
+        self.hint_texts = hint_texts
+        self.titles = titles
+        self.descriptions = descriptions
+        self.ref = ref
+        self._values = [""] * len(hint_texts)
+        self.content = self._build_content()
+
+    def _build_content(self):
+        self.text_fields = []
+        fields_column = ft.Column(spacing=8, scroll = ft.ScrollMode.AUTO)
+        
+        for i, title in enumerate(self.titles):
+            text_field = FactoryTextField(
+                hint_text=self.hint_texts[i],
+                read_only=False,
+                expand=True,
+                on_change=lambda e, idx=i: self._handle_text_change(e, idx)
+            )
+            self.text_fields.append(text_field)
+            
+            field_col = ft.Column(
+                controls=[
+                    ft.Text(title, size=12, color=colors_map["text_secondary"]),
+                    text_field,
+                    ft.Text(self.descriptions[i], size=10, color=ft.Colors.GREY_500)
+                ],
+                spacing=2,
+            )
+            
+            fields_column.controls.append(field_col)
+        
+        return fields_column
+    
+    def _handle_text_change(self, e, index):
+        self._values[index] = e.control.value
+        if self.on_change:
+            # Create a synthetic event with all values
+            event = type('obj', (object,), {
+                'control': self,
+                'data': self.value
+            })
+            self.on_change(event)
+    
+    @property
+    def value(self):
+        """Return a dictionary with the values from all fields"""
+        result = {}
+        for i, title in enumerate(self.titles):
+            key = title.lower().replace(' ', '_')
+            result[key] = self._values[i]
+        return result
+    
+    @value.setter
+    def value(self, val):
+        """Set values from a dictionary or list"""
+        if isinstance(val, dict):
+            for i, title in enumerate(self.titles):
+                key = title.lower().replace(' ', '_')
+                if key in val:
+                    self._values[i] = val[key]
+                    if i < len(self.text_fields):
+                        self.text_fields[i].value = val[key]
+        elif isinstance(val, list) and len(val) <= len(self.text_fields):
+            for i, v in enumerate(val):
+                self._values[i] = v
+                self.text_fields[i].value = v
+        self.update()
+    
+    @property
+    def result(self):
+        return self.value
+
+# MARK: Author
+class FactoryAuthorRow(ft.Row):
+    def __init__(self, author: str = "", email: str = "", on_change: Optional[Callable] = None, ref: Optional[ft.Ref] = None):
+        super().__init__(spacing=10)
+        self.author = author
+        self.email = email
+        self.on_change = on_change
+        self.ref = ref
+        self.controls = self._build_content()
+
+    def _build_content(self):
+        self.author_field = FactoryTextField(
+            hint_text="Author name",
+            value=self.author,
+            read_only=False,
+            expand=True,
+            on_change=self._handle_author_change
+        )
+
+        self.email_field = FactoryTextField(
+            hint_text="Author email",
+            value=self.email,
+            read_only=False,
+            expand=True,
+            on_change=self._handle_email_change
+        )
+        
+        return [self.author_field, self.email_field]
+    
+    def _handle_author_change(self, e):
+        self.author = e.control.value
+        self._trigger_on_change()
+    
+    def _handle_email_change(self, e):
+        self.email = e.control.value
+        self._trigger_on_change()
+    
+    def _trigger_on_change(self):
+        if self.on_change:
+            # Create a synthetic event with the current values
+            e = type('obj', (object,), {
+                'control': self,
+                'data': self.value
+            })
+            self.on_change(e)
+    
+    @property
+    def value(self):
+        """Return the author information in the format expected by pyproject.toml"""
+        if not self.author and not self.email:
+            return None
+        
+        return {
+            "name": self.author,
+            "email": self.email
+        }
+    
+    @value.setter
+    def value(self, val):
+        """Set values from a dictionary, string, or list"""
+        if isinstance(val, dict):
+            self.author = val.get("name", "")
+            self.email = val.get("email", "")
+        elif isinstance(val, str) and "(" in val and ")" in val:
+            # Parse format like "John Doe (john@example.com)"
+            parts = val.split("(")
+            self.author = parts[0].strip()
+            self.email = parts[1].strip().rstrip(")")
+        elif isinstance(val, list) and len(val) >= 2:
+            self.author = val[0]
+            self.email = val[1]
+        
+        # Update the field values
+        if hasattr(self, 'author_field'):
+            self.author_field.value = self.author
+            self.email_field.value = self.email
+            self.update()
+    
+    @property
+    def result(self):
+        return self.value
+
 
 # MARK: Settings
 class FactorySettingsDialog(ft.AlertDialog):

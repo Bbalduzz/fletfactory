@@ -73,11 +73,27 @@ class PyProjectWriter:
         if form_state.organization:
             flet_data["org"] = str(form_state.organization)
         
+        if form_state.author:
+            if isinstance(form_state.author, dict) and 'name' in form_state.author and 'email' in form_state.author:
+                project["authors"] = [form_state.author]
+        
         if form_state.build_number and form_state.build_number != "0":
             flet_data["build_number"] = str(form_state.build_number)
         
         if form_state.arch:
             flet_data["arch"] = str(form_state.arch)
+
+        if form_state.template_path or form_state.template_ref or form_state.template_dir:
+            PyProjectWriter._ensure_section(flet_data, "template")
+            
+            if form_state.template_path:
+                flet_data["template"]["path"] = str(form_state.template_path)
+            
+            if form_state.template_ref:
+                flet_data["template"]["ref"] = str(form_state.template_ref)
+            
+            if form_state.template_dir:
+                flet_data["template"]["dir"] = str(form_state.template_dir)
 
         if form_state.include_optional_controls and len(form_state.include_optional_controls) > 0:
             PyProjectWriter._ensure_section(flet_data, "flutter")

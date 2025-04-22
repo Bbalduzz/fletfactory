@@ -15,12 +15,16 @@ class FormState:
     arch: str = ""
     flutter_args: List[str] = field(default_factory=list)
     clear_build_cache: bool = False
+    template_path: str = ""
+    template_dir: str = ""
+    template_ref: str = ""
     
     # App information
     project_name: str = ""
     product_name: str = ""
     description: str = ""
     organization: str = ""
+    author: dict = field(default_factory=dict)
     
     # Versioning
     build_number: str = "0"
@@ -141,6 +145,9 @@ class FormState:
             "--arch": self.arch,
             "--output": self.output_directory,
             "--clear-cache": self.clear_build_cache,
+            "--template": self.template_path,
+            "--template-dir": self.template_dir,
+            "--template-ref": self.template_ref,
 
             "--build-version": self.build_version,
             "--build-number": self.build_number,

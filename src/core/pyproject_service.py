@@ -71,6 +71,25 @@ class PyProjectService:
             "enable_color_emojis": "tool.flet.web.use_color_emoji",
             "split_apk_per_abi": "tool.flet.android.split_per_abi"
         }
+
+        template_config_fields = {
+            "path": "tool.flet.template.path",
+            "dir": "tool.flet.template.dir",
+            "ref": "tool.flet.template.ref"
+        }
+
+        authors = get_pyproject("project.authors")
+        if authors and isinstance(authors, list) and len(authors) > 0:
+            author_data = authors[0]
+            if isinstance(author_data, dict) and "name" in author_data:
+                for name, field_def in field_registry.field_definitions.items():
+                    if field_def.property_name == "author":
+                        form_state.update("author", author_data)
+                        
+                        ref = field_registry.get_ref(name)
+                        if ref and ref.current:
+                            ref.current.value = author_data
+                        break
         
         for prop, paths in mapping.items():
             for path_str in paths:
@@ -87,6 +106,18 @@ class PyProjectService:
             if get_pyproject(path_str) is not None:
                 value = get_pyproject(path_str)
                 PyProjectService._update_field_value(prop, value, form_state, field_registry)
+
+        template_values = {}
+        for field, path_str in template_config_fields.items():
+            if value := get_pyproject(path_str):
+                template_values[field] = value
+        if template_values:
+            for name, field_def in field_registry.field_definitions.items():
+                if field_def.widget_type == "template_config":
+                    ref = field_registry.get_ref(name)
+                    if ref and ref.current:
+                        ref.current.value = template_values
+                    break
     
     @staticmethod
     def _update_field_value(property_name: str, value: Any, form_state: FormState, field_registry: FieldRegistry) -> None:

@@ -94,6 +94,14 @@ def get_app_info_fields():
             hint_text="Org name in reverse domain name notation",
             hint_widget="e.g com.mycompany",
             widget_type="text"
+        ),
+        FieldDefinition(
+            name="author",
+            property_name="author",
+            title="Author",
+            hint_text="Author information for the project",
+            hint_widget="e.g. John Doe (john@example.com)",
+            widget_type="author_info",
         )
     ]
 
@@ -179,6 +187,13 @@ def get_package_options_fields():
             hint_text="Exclude files and directories from Python app package",
             hint_widget="e.g. __pycache__/",
             widget_type="badges"
+        ),
+        FieldDefinition(
+            name="template_config",
+            property_name="template_config",
+            title="Template",
+            hint_text="Configure custom template for Flutter project generation",
+            widget_type="template_config"
         ),
         FieldDefinition(
             name="compile_app_py",

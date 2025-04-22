@@ -4,7 +4,8 @@ import flet as ft
 from ui.components.form import FormState
 from ui.components.widgets import (
     FactoryTextField, FactoryDropdown, FactoryCheckBox, FactoryBadgeInput,
-    FactoryDropdownOption, FactoryField, IconPicker
+    FactoryDropdownOption, FactoryField, IconPicker, MultipleFactoryTextField,
+    FactoryAuthorRow
 )
 
 @dataclass
@@ -52,6 +53,27 @@ class FieldRegistry:
             
         ref = self.field_refs.get(field_name)
 
+        if field_def.widget_type == "template_config":
+            return MultipleFactoryTextField(
+                titles=["path", "ref", "dir"],
+                descriptions=[
+                    "Repository or path to a directory with your own template",
+                    "Relative path to template in repository",
+                    "Branch, tag, or commit to checkout"
+                ],
+                hint_texts=[
+                    "e.g. gh:my-org/my-repo",
+                    "e.g. <user-directory>/.cookiecutters/flet-build-template",
+                    "e.g. v1",
+                ],
+                ref=ref,
+                on_change=lambda e: self._handle_template_config_change(e, field_def.property_name)
+            )
+        if field_def.widget_type == "author_info":
+            return FactoryAuthorRow(
+                ref=ref,
+                on_change=self.connect_field(field_name)
+            )
         if field_def.widget_type == "icon":
             return IconPicker(
                 hint_text=field_def.hint_text,
@@ -106,3 +128,14 @@ class FieldRegistry:
     
     def get_ref(self, field_name: str) -> ft.Ref:
         return self.field_refs.get(field_name)
+
+    def _handle_template_config_change(self, e, property_name):
+        """Special handler for template configuration that maps to individual fields"""
+        if hasattr(e, 'control') and hasattr(e.control, 'value'):
+            template_values = e.control.value
+            if 'path' in template_values:
+                self.form_state.update('template_path', template_values['path'])
+            if 'ref' in template_values:
+                self.form_state.update('template_ref', template_values['ref'])
+            if 'dir' in template_values:
+                self.form_state.update('template_dir', template_values['dir'])
