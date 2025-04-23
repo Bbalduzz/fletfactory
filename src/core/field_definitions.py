@@ -173,6 +173,14 @@ def get_appearance_fields():
 def get_package_options_fields():
     return [
         FieldDefinition(
+            name="dependencies",
+            property_name="dependencies",
+            title="Dependencies",
+            hint_text="Add python dependencies",
+            hint_widget="e.g. flet",
+            widget_type="badges"
+        ),
+        FieldDefinition(
             name="include_controls",
             property_name="include_optional_controls",
             title="Include Optional Controls",

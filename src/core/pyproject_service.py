@@ -118,6 +118,33 @@ class PyProjectService:
                     if ref and ref.current:
                         ref.current.value = template_values
                     break
+
+        # Handle dependencies
+        dependencies = get_pyproject("project.dependencies")
+        if not dependencies:
+            dependencies = get_pyproject("tool.poetry.dependencies")
+        
+        if dependencies and isinstance(dependencies, (list, dict)):
+            dep_list = []
+            if isinstance(dependencies, list):
+                dep_list = dependencies
+            elif isinstance(dependencies, dict):
+                # dict format to list format
+                for dep_name, dep_version in dependencies.items():
+                    if dep_name != "python": # skip python dep (?)
+                        if isinstance(dep_version, str):
+                            dep_list.append(f"{dep_name}=={dep_version}")
+                        else:
+                            dep_list.append(dep_name)
+            
+            if dep_list:
+                for name, field_def in field_registry.field_definitions.items():
+                    if field_def.property_name == "dependencies":
+                        form_state.update("dependencies", dep_list)
+                        ref = field_registry.get_ref(name)
+                        if ref and ref.current:
+                            ref.current.value = dep_list
+                        break
     
     @staticmethod
     def _update_field_value(property_name: str, value: Any, form_state: FormState, field_registry: FieldRegistry) -> None:

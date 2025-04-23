@@ -60,6 +60,13 @@ class PyProjectWriter:
         
         if form_state.description:
             project["description"] = str(form_state.description)
+
+        if form_state.author:
+            if isinstance(form_state.author, dict) and 'name' in form_state.author and 'email' in form_state.author:
+                project["authors"] = [form_state.author]
+        
+        if form_state.dependencies and len(form_state.dependencies) > 0:
+            project["dependencies"] = [str(dep) for dep in form_state.dependencies]
     
     @staticmethod
     def _update_flet_section(pyproject_data: Dict[str, Any], form_state: FormState) -> None:
@@ -72,10 +79,6 @@ class PyProjectWriter:
         
         if form_state.organization:
             flet_data["org"] = str(form_state.organization)
-        
-        if form_state.author:
-            if isinstance(form_state.author, dict) and 'name' in form_state.author and 'email' in form_state.author:
-                project["authors"] = [form_state.author]
         
         if form_state.build_number and form_state.build_number != "0":
             flet_data["build_number"] = str(form_state.build_number)
@@ -102,8 +105,8 @@ class PyProjectWriter:
             # here we the simple list format if no version or path information
             # this converts ['flet_video', 'flet_audio'] to:
             # flutter.dependencies = ["flet_video", "flet_audio"]
-            dependencies = [str(ctrl) for ctrl in form_state.include_optional_controls]
-            flet_data["flutter"]["dependencies"] = dependencies
+            flutter_dependencies = [str(ctrl) for ctrl in form_state.include_optional_controls]
+            flet_data["flutter"]["dependencies"] = flutter_dependencies
             
             # If I want to support the more complex format with versions,
             # I would need to parse the input strings to extract version info

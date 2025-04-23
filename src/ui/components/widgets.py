@@ -254,6 +254,7 @@ class FactoryBadge(ft.TextButton):
             on_click=on_click,
             **kwargs
         )
+        self.expand = False
         self.text = text
         self.style = ft.ButtonStyle(
             color=colors_map["primary"],
@@ -264,7 +265,9 @@ class FactoryBadge(ft.TextButton):
             [
                 ft.Text(self.text),
                 ft.Icon(ft.Icons.CLOSE, size=12, color=colors_map["primary"])
-            ]
+            ],
+            expand=False,
+            tight=True
         )
 
 class FactoryBadgeInput(ft.Container):
@@ -284,7 +287,9 @@ class FactoryBadgeInput(ft.Container):
         )
         self._badges_row = ft.Row(
             spacing=5,
+            run_spacing=5,
             controls=self._badges,
+            wrap=True,
             scroll=ft.ScrollMode.HIDDEN
         )
         self.content = ft.Column(
