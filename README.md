@@ -7,7 +7,3 @@
 <p align="center">
   <b>Build flet app effortlessly.</b>
 </p>
-
-<div align="center">
-      <image width="100%" align="center" src="https://github.com/user-attachments/assets/2c113de3-bd8d-4beb-ad58-2bb6655c5bb8" alt="demo">
-</div>
